@@ -389,28 +389,34 @@ namespace MES_N
                         static_str = String_DIP + " " + String_NOTE + MPU.static_msg[1];
                         if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[1]))
                         {
-                            dt = ReadSQLToDT(string.Format("SELECT * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' and CONTIME IS NULL ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
-                            if (dt.Rows.Count > 0)
+                            if (MPU.Ethernet == true)
                             {
-                                if (!string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
+                                dt = ReadSQLToDT(string.Format("SELECT * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' and CONTIME IS NULL ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
+                                if (dt.Rows.Count > 0)
+                                {
+                                    if (!string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
+                                    {
+                                        ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+                                    }
+                                }
+                                else
                                 {
                                     ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
                                 }
                             }
-                            else
-                            {
-                                ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
-                            }
                         }
                         else if (!MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[2]) && !MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[3]))
                         {
-                            dt = ReadSQLToDT(string.Format("SELECT TOP (1) * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
-                            if (dt.Rows.Count > 0)
+                            if (MPU.Ethernet == true)
                             {
-                                if (string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
+                                dt = ReadSQLToDT(string.Format("SELECT TOP (1) * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
+                                if (dt.Rows.Count > 0)
                                 {
-                                    //ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, CONTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
-                                    ReadSQLToDT(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
+                                    if (string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
+                                    {
+                                        //ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, CONTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+                                        ReadSQLToDT(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
+                                    }
                                 }
                             }
                         }
@@ -428,13 +434,18 @@ namespace MES_N
                             }
                             concat_str = concat_str.Trim(',');
                             MPU.DataTable_CurrLog = null;
-                            MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
-                            Form1.form1.Datagridview_Log[0].DataSource = MPU.DataTable_CurrLog;
 
-                            Form1.form1.Datagridview_Log[0].Columns[0].Width = 100;
-                            Form1.form1.Datagridview_Log[0].Columns[1].Width = 60;
-                            Form1.form1.Datagridview_Log[0].Columns[2].Width = 859;
-                            Form1.form1.Datagridview_Log[0].Columns[3].Width = 224;
+                            if (MPU.Ethernet == true)
+                            {
+                                MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
+
+                                Form1.form1.Datagridview_Log[0].DataSource = MPU.DataTable_CurrLog;
+
+                                Form1.form1.Datagridview_Log[0].Columns[0].Width = 100;
+                                Form1.form1.Datagridview_Log[0].Columns[1].Width = 60;
+                                Form1.form1.Datagridview_Log[0].Columns[2].Width = 859;
+                                Form1.form1.Datagridview_Log[0].Columns[3].Width = 224;
+                            }
                             isUpdate = false;
                         }
 
@@ -483,15 +494,19 @@ namespace MES_N
             DataTable dtSource = new DataTable();
             try
             {
-                using (SqlConnection conn = new SqlConnection("server=192.168.0.180;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=28921148"))
+                if(Check_Connection.CheckConnaction())
                 {
-                    SqlCommand cmd = new SqlCommand(pSQL, conn);
-                    SqlDataAdapter adapter = new SqlDataAdapter(cmd);
-                    adapter.Fill(dtSource);
+                    using (SqlConnection conn = new SqlConnection("server=192.168.0.180;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=28921148"))
+                    {
+                        SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        SqlDataAdapter adapter = new SqlDataAdapter(cmd);
+                        adapter.Fill(dtSource);
+                    }
                 }
             }
             catch (Exception ex)
             {
+                MPU.Ethernet = false;
                 throw ex;
             }
             return dtSource;

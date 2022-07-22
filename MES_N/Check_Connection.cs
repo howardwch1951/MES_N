@@ -37,7 +37,7 @@ namespace MES_N
             Ping ping = new Ping();
             try
             {
-                PingReply reply = ping.Send("192.168.1.32", 1500);
+                PingReply reply = ping.Send("192.168.0.180", 1500);
                 if (reply.Status == IPStatus.Success)
                     return true;
                 else
@@ -59,13 +59,17 @@ namespace MES_N
                     {
                         conn.Open();
                         conn.Close();
+                        MPU.Ethernet = true;
                         return true;
                     }
                 }
+                else
+                    MPU.Ethernet = false;
                 return false;
             }
             catch
             {
+                MPU.Ethernet = false;
                 return false;
             }
         }
