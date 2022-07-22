@@ -424,11 +424,11 @@ namespace MES_N
                             string concat_str = "";
                             for (int j = 0; j < MPU.DataTable_Threads.Rows.Count; j++)
                             {
-                                concat_str += "'" + MPU.DataTable_Threads.Rows[j]["DIP"].ToString() + "   " + MPU.DataTable_Threads.Rows[j]["ADDRESS"].ToString() + MPU.DataTable_Threads.Rows[j]["NOTE"].ToString() + "  '" + ",";
+                                concat_str += "'" + MPU.DataTable_Threads.Rows[j]["DIP"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["ADDRESS"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["NOTE"].ToString() + "'" + ",";
                             }
                             concat_str = concat_str.Trim(',');
                             MPU.DataTable_CurrLog = null;
-                            MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(DIP,ADDRESS,DVALUE) IN ({0}) ORDER BY DISTIME DESC", concat_str));
+                            MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
                             Form1.form1.Datagridview_Log[0].DataSource = MPU.DataTable_CurrLog;
 
                             Form1.form1.Datagridview_Log[0].Columns[0].Width = 100;
@@ -667,7 +667,7 @@ namespace MES_N
                         Array.Resize(ref String_ReData, Convert.ToInt32(address_index.Split(',')[1]));
                         String_ReData[i] = DateTime.Now.ToString("HH:mm:ss") + " ... " + str_1 + " : " + str_2 + " : " + str_3 + " : " + str_4;
 
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[0].ToString() + "','" + str_1 + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[0].ToString() + "','" + String_ReData[i].Split('.')[3] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ";
 
                     }
                     else
@@ -2927,22 +2927,34 @@ namespace MES_N
                     double_Mpa_2 = eight2[0];
                 }
 
-                if (double_Mpa_1 > 10000)
+                if (double_Mpa_1 > 20000)
                 {
                     //紅燈(停止中)
+                    String_ReData[0] = DateTime.Now.ToString("HH:mm:ss") + " ... Red Light";                    
                 }
-                else if (double_Mpa_2 > 10000)
+                else if (double_Mpa_2 > 20000)
                 {
                     //綠燈(運行中)
+                    String_ReData[0] = DateTime.Now.ToString("HH:mm:ss") + " ... Green Light";
                 }
                 else
                 {
                     //橘燈(暫停中)
+                    String_ReData[0] = DateTime.Now.ToString("HH:mm:ss") + " ... Orange Light";
                 }
+                String_SQLcommand = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[0].ToString() + "','" + String_ReData[0].Split('.')[3] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ";
             }
-            catch
+            catch (Exception EX)
             {
 
+                if (EX.Source != null)
+                {
+
+                    String_ReData[0] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.static_msg[1];
+
+                    Console.WriteLine("Exception source: {0}", EX.Source);
+
+                }
             }
         }
     }

@@ -278,7 +278,7 @@ namespace MES_N
 
                 bool_isAutoRun = true;
 
-                MPU.conn.Open();
+                //MPU.conn.Open();
 
                 SetComboboxValue();
 
@@ -387,13 +387,13 @@ namespace MES_N
                     string concat_str = "";
                     for (int i = 0; i < MPU.DataTable_Threads.Rows.Count; i++)
                     {
-                        concat_str += "'" + MPU.DataTable_Threads.Rows[i]["DIP"].ToString() + "   " + MPU.DataTable_Threads.Rows[i]["ADDRESS"].ToString() + MPU.DataTable_Threads.Rows[i]["NOTE"].ToString() + "  '" + ",";
+                        concat_str += "'" + MPU.DataTable_Threads.Rows[i]["DIP"].ToString() + "," + MPU.DataTable_Threads.Rows[i]["ADDRESS"].ToString() + "," + MPU.DataTable_Threads.Rows[i]["NOTE"].ToString() + "'" + ",";
                     }
 
                     concat_str = concat_str.Trim(',');
                     DataTable DataTable_HistLog = new DataTable();
                     DataTable_HistLog = null;
-                    DataTable_HistLog = ReadSQLToDT(string.Format("SELECT TOP(50) DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort FROM tb_connectlog WHERE CONCAT(DIP,ADDRESS,DVALUE) IN ({0}) ORDER BY Sort DESC", concat_str));
+                    DataTable_HistLog = ReadSQLToDT(string.Format("SELECT TOP(50) DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort FROM tb_connectlog WHERE CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY Sort DESC", concat_str));
                     MPU.DataTable_HistLog = DataTable_HistLog.Clone();
                     for (int i = 0; i < DataTable_HistLog.Rows.Count; i++)
                     {
@@ -784,7 +784,7 @@ namespace MES_N
                 concat_str = concat_str.Trim(',');
                 DataTable DataTable_HistLog = new DataTable();
                 DataTable_HistLog = null;
-                DataTable_HistLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort FROM tb_connectlog WHERE ((CONTIME BETWEEN '{1}' AND '{2}') OR (DISTIME BETWEEN '{3}' AND '{4}')) AND CONCAT(DIP,ADDRESS,DVALUE) IN ({0}) ORDER BY Sort DESC", concat_str, start.ToString("yyyy-MM-dd HH:mm:ss"), end.ToString("yyyy-MM-dd HH:mm:ss"), start.ToString("yyyy-MM-dd HH:mm:ss"), end.ToString("yyyy-MM-dd HH:mm:ss")));
+                DataTable_HistLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort FROM tb_connectlog WHERE ((CONTIME BETWEEN '{1}' AND '{2}') OR (DISTIME BETWEEN '{3}' AND '{4}')) AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY Sort DESC", concat_str, start.ToString("yyyy-MM-dd HH:mm:ss"), end.ToString("yyyy-MM-dd HH:mm:ss"), start.ToString("yyyy-MM-dd HH:mm:ss"), end.ToString("yyyy-MM-dd HH:mm:ss")));
                 MPU.DataTable_HistLog = DataTable_HistLog.Clone();
                 for (int i = 0; i < DataTable_HistLog.Rows.Count; i++)
                 {
