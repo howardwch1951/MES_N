@@ -21,6 +21,7 @@ namespace MES_N
         }
 
         public List<DataGridView> Datagridview_Log = new List<DataGridView>();
+        private delegate void InvokeDelegate();
         private void Form1_Load(object sender, EventArgs e)
         {   
             dateTimePicker_Start.CustomFormat = "yyyy 年 MM 月 dd 日　HH:mm:ss";
@@ -28,6 +29,7 @@ namespace MES_N
             dateTimePicker_End.CustomFormat = "yyyy 年 MM 月 dd 日　HH:mm:ss";
             dateTimePicker_End.Format = DateTimePickerFormat.Custom;
 
+            Datagridview_Log.Add(this.Controls.Find("dataGridView_Threads", true)[0] as DataGridView);
             Datagridview_Log.Add(this.Controls.Find("dataGridView_CurrLog", true)[0] as DataGridView);
             Datagridview_Log.Add(this.Controls.Find("dataGridView_HistLog", true)[0] as DataGridView);
 
@@ -65,7 +67,7 @@ namespace MES_N
 
                 String[] Arry_Str_Set = { "" };
 
-                String StrDataColumnsName = "DID,DIP,S_KIND,Port,Address,Sclass,Portid,SID,text,note,Dline,Mode,ReaderSleep";
+                String StrDataColumnsName = "DID,DIP,S_KIND,Port,Address,Sclass,Portid,SID,text,note,Dline";
 
                 MPU.SetDataColumn(ref Arry_Str_Set, StrDataColumnsName);
 
@@ -77,7 +79,6 @@ namespace MES_N
 
 
                     if (!(strLine == null) && Datatable_showtxt.Columns.Count <= strLine.Split(',').Length)
-
                     {
 
                         Datatable_showtxt.Rows.Add(strLine.Split(','));
@@ -96,7 +97,7 @@ namespace MES_N
             }
             catch (Exception ex)
             {
-
+                MPU.WriteErrorCode("", "SetDatatable" + ex.Message);
                 if (ex.Source != null)
 
                     Console.WriteLine("F0475:Exception source: {0}", ex.Source);
@@ -136,13 +137,31 @@ namespace MES_N
                     Datatable_showtxt.Rows[i]["Sclass"].ToString() ,
                     Datatable_showtxt.Rows[i]["SID"].ToString().Replace('.',' ') ,
                     Datatable_showtxt.Rows[i]["NOTE"].ToString() +  "_" +
-                    Datatable_showtxt.Rows[i]["text"].ToString() , ""
+                    Datatable_showtxt.Rows[i]["text"].ToString() , "連線中...",
                     };
 
                     MPU.DataTable_Threads.Rows.Add(String_RowData);
                 }
-
                 dataGridView_Threads.DataSource = MPU.DataTable_Threads;
+
+                string concat_str = "";
+                for (int j = 0; j < MPU.DataTable_Threads.Rows.Count; j++)
+                {
+                    concat_str += "'" + MPU.DataTable_Threads.Rows[j]["DIP"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["ADDRESS"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["NOTE"].ToString() + "'" + ",";
+                }
+                concat_str = concat_str.Trim(',');
+                MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
+                dataGridView_CurrLog.DataSource = MPU.DataTable_CurrLog;
+
+                concat_str = "";
+                for (int i = 0; i < MPU.DataTable_Threads.Rows.Count; i++)
+                {
+                    concat_str += "'" + MPU.DataTable_Threads.Rows[i]["DIP"].ToString() + "," + MPU.DataTable_Threads.Rows[i]["ADDRESS"].ToString() + "," + MPU.DataTable_Threads.Rows[i]["NOTE"].ToString() + "'" + ",";
+                }
+
+                concat_str = concat_str.Trim(',');
+                MPU.DataTable_HistLog = ReadSQLToDT(string.Format("SELECT TOP(50) DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort FROM tb_connectlog WHERE CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY Sort DESC", concat_str));
+                dataGridView_HistLog.DataSource = MPU.DataTable_HistLog;
 
                 SetDatagridview();
 
@@ -153,13 +172,12 @@ namespace MES_N
                         txt.Add(row["DIP"].ToString() + "," + row["Port"].ToString());
                     }
                 }
-
                 int count = 1;
                 int row_index = 0;
                 index = new int[txt.Count, 1];
                 for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
                 {
-                    if (i < Datatable_showtxt.Rows.Count - 1)
+                    if (i != Datatable_showtxt.Rows.Count - 1)
                     {
                         if (Datatable_showtxt.Rows[i]["DIP"].ToString() + Datatable_showtxt.Rows[i]["Port"].ToString() == Datatable_showtxt.Rows[i + 1]["DIP"].ToString() + Datatable_showtxt.Rows[i + 1]["Port"].ToString())
                         {
@@ -183,12 +201,19 @@ namespace MES_N
                     }
                     else
                     {
-                        count = 1;
-                        row_index++;
-                        index[row_index, 0] = count;
+                        if (Datatable_showtxt.Rows.Count == 1)
+                        {
+                            count = 1;
+                            index[row_index, 0] = count;
+                        }
+                        else
+                        {
+                            count = 1;
+                            row_index++;
+                            index[row_index, 0] = count;
+                        }
                     }
                 }
-
                 for (int i = 0; i < txt.Count; i++)
                 {
                     for (int j = 0; j < index[i, 0]; j++)
@@ -196,7 +221,6 @@ namespace MES_N
                         address_index.Add((j + 1).ToString() + "," + index[i, 0].ToString());
                     }                    
                 }
-
                 new Thread(SetDatagridviewValue).Start();
 
                
@@ -205,13 +229,14 @@ namespace MES_N
             }
             catch (Exception ex)
             {
-
+                MPU.WriteErrorCode("", "SetThreads" + ex.Message);
                 if (ex.Source != null)
 
                     Console.WriteLine("F0573:Exception source: {0}", ex.Source);
             }
         }
 
+        int thread_count = 0;
         private void SetDatagridviewValue()
         {
             try
@@ -243,11 +268,6 @@ namespace MES_N
 
                     MesNetSite_Sys[i].String_NOTE = MPU.DataTable_Threads.Rows[i]["NOTE"].ToString();
 
-                    if (i == 24)
-                    {
-                        string ss = "";
-                    }
-
                     MesNetSite_Sys[i].address_index = address_index[i];
 
                     Array.Resize(ref MesNetSite_Sys[i].String_ReData, 1);
@@ -263,8 +283,6 @@ namespace MES_N
 
                     MesNetSite_Sys[i].bool_AutoRun = true;
 
-                    MPU.DataTable_Threads.Rows[i]["Static"] = MPU.static_msg[3];
-
                     MesNetSite_Sys[i].TcpClientConnect();
 
 
@@ -272,19 +290,29 @@ namespace MES_N
                     Thread_MesNetSite[i] = new System.Threading.Thread(MesNetSite_Sys[i].MesNetSiteRunning);
                     Thread_MesNetSite[i].IsBackground = true;
                     Thread_MesNetSite[i].Start();
+                    //ThreadPool.QueueUserWorkItem(new WaitCallback(MesNetSite_Sys[i].MesNetSiteRunning));
                     MesNetSite_Sys[i].bool_isThreadSet = true;
+                    thread_count++;
                 }
-
+                Application.DoEvents();
 
                 bool_isAutoRun = true;
 
-                //MPU.conn.Open();
+                MPU.conn.Open();
 
                 SetComboboxValue();
 
                 SetHistoryLog();
 
                 SetDatagridview();
+
+                //ThreadPool.QueueUserWorkItem(new WaitCallback(CurrLog_Timer));
+
+                new Thread(CurrLog_Timer)
+                {
+                    IsBackground = true
+                }
+                .Start();
 
                 new Thread(UpdateValue)
                 {
@@ -294,7 +322,7 @@ namespace MES_N
             }
             catch (Exception ex)
             {
-
+                MPU.WriteErrorCode("", "SetDatagridviewValue" + ex.Message);
                 throw ex;
             }
         }
@@ -311,8 +339,21 @@ namespace MES_N
                 dataGridView_Threads.Columns[5].Width = 100;
                 dataGridView_Threads.Columns[6].Width = 60;
                 dataGridView_Threads.Columns[7].Width = 100;
-                dataGridView_Threads.Columns[8].Width = 453;
+                dataGridView_Threads.Columns[8].Width = 452;
                 dataGridView_Threads.Columns[9].Width = 190;
+
+                dataGridView_CurrLog.Columns[0].Width = 100;
+                dataGridView_CurrLog.Columns[1].Width = 60;
+                dataGridView_CurrLog.Columns[2].Width = 859;
+                dataGridView_CurrLog.Columns[3].Width = 223;
+
+                dataGridView_HistLog.Columns[0].Width = 100;
+                dataGridView_HistLog.Columns[1].Width = 60;
+                dataGridView_HistLog.Columns[2].Width = 860;
+                dataGridView_HistLog.Columns[5].Width = 223;
+                dataGridView_HistLog.Columns[3].Visible = false;
+                dataGridView_HistLog.Columns[4].Visible = false;
+                dataGridView_HistLog.Columns[6].Visible = false;
 
 
                 foreach (DataGridViewColumn column in dataGridView_Threads.Columns)
@@ -378,7 +419,7 @@ namespace MES_N
         {
             if (this.InvokeRequired)
             {
-                this.Invoke(new Action(SetHistoryLog), new object[] { });
+                this.BeginInvoke(new Action(SetHistoryLog), new object[] { });
             }
             else
             {
@@ -446,20 +487,97 @@ namespace MES_N
 
 
 
-                        Datagridview_Log[1].Columns[0].Width = 100;
-                        Datagridview_Log[1].Columns[1].Width = 60;
-                        Datagridview_Log[1].Columns[2].Width = 860;
-                        //Datagridview_Log[1].Columns[3].Width = 150;
-                        //Datagridview_Log[1].Columns[4].Width = 150;
-                        Datagridview_Log[1].Columns[5].Width = 224;
-                        Datagridview_Log[1].Columns[3].Visible = false;
-                        Datagridview_Log[1].Columns[4].Visible = false;
-                        Datagridview_Log[1].Columns[6].Visible = false;
+                        //Datagridview_Log[1].Columns[0].Width = 100;
+                        //Datagridview_Log[1].Columns[1].Width = 60;
+                        //Datagridview_Log[1].Columns[2].Width = 860;
+                        ////Datagridview_Log[1].Columns[3].Width = 150;
+                        ////Datagridview_Log[1].Columns[4].Width = 150;
+                        //Datagridview_Log[1].Columns[5].Width = 224;
+                        //Datagridview_Log[1].Columns[3].Visible = false;
+                        //Datagridview_Log[1].Columns[4].Visible = false;
+                        //Datagridview_Log[1].Columns[6].Visible = false;
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex);
+                }
+            }
+        }
+
+        Boolean canUpdateCurrLog = true;
+        private static readonly object D_Lock = new object();
+
+        private void CurrLog_Timer()
+        {
+
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new InvokeDelegate(CurrLog_Timer));
+            }
+            else
+            {
+                Counter.Enabled = true;                
+                while (bool_isAutoRun)
+                {
+                    lock (D_Lock)
+                    {
+                        if (canUpdateCurrLog)
+                        {
+                            canUpdateCurrLog = false;
+                            Counter.Enabled = false;
+                            string concat_str = "";
+                            for (int j = 0; j < MPU.DataTable_Threads.Rows.Count; j++)
+                            {
+                                concat_str += "'" + MPU.DataTable_Threads.Rows[j]["DIP"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["ADDRESS"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["NOTE"].ToString() + "'" + ",";
+                            }
+                            concat_str = concat_str.Trim(',');
+                            //MPU.DataTable_CurrLog = null;
+
+                            if (MPU.Ethernet == true)
+                            {
+                                MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
+
+                                //Datagridview_Log[0].DataSource = MPU.DataTable_CurrLog;
+
+                                //Datagridview_Log[0].Columns[0].Width = 100;
+                                //Datagridview_Log[0].Columns[1].Width = 60;
+                                //Datagridview_Log[0].Columns[2].Width = 859;
+                                //Datagridview_Log[0].Columns[3].Width = 224;
+                            }
+                            Counter.Enabled = true;
+
+                            //Thread.Sleep(30000);
+                            //Application.DoEvents();
+                        }
+                        Thread.Sleep(500);
+                        Application.DoEvents();
+                    }
+                }
+            }            
+        }
+
+        int count = 0;
+        Boolean FirstEnter = true;
+        private void Counter_Tick(object sender, EventArgs e)
+        {
+            if (FirstEnter)
+            {
+                canUpdateCurrLog = true;
+                FirstEnter = false;
+            }
+            else
+            {
+                if (count >= 30)
+                {
+                    count = 0;
+                    canUpdateCurrLog = true;
+                    Console.WriteLine("Update Time : " + DateTime.Now);
+                }
+                else
+                {
+                    count++;
+                    canUpdateCurrLog = false;
                 }
             }
         }
@@ -482,11 +600,11 @@ namespace MES_N
                     {
                         if (MPU.DataTable_HistLog.Rows[i]["狀態"].ToString().Contains("斷線時間"))
                         {
-                            Datagridview_Log[1].Rows[i].DefaultCellStyle.BackColor = Color.MistyRose;
+                            dataGridView_HistLog.Rows[i].DefaultCellStyle.BackColor = Color.MistyRose;
                         }
                         else
                         {
-                            Datagridview_Log[1].Rows[i].DefaultCellStyle.BackColor = Color.DarkSeaGreen;
+                            dataGridView_HistLog.Rows[i].DefaultCellStyle.BackColor = Color.DarkSeaGreen;
                         }
                     }
 
@@ -549,12 +667,13 @@ namespace MES_N
                         }
                     }
                     Thread.Sleep(1000);
+                    Application.DoEvents();
                 }
             }
             catch (Exception ex)
             {
 
-                throw ex;
+                MPU.WriteErrorCode("", "UpdateValue" + ex.Message);
             }
         }
 
@@ -579,19 +698,13 @@ namespace MES_N
                             dataGridView_Threads.Rows[i].DefaultCellStyle.BackColor = Color.White;
                         }
                     }
-                    Application.DoEvents();
                 }
                 catch (Exception ex)
                 {
-
+                    MPU.WriteErrorCode("", "ChangeColor " + ex.Message);
                     throw ex;
                 }
             }
-        }
-
-        private void timer_Server_Tick(object sender, EventArgs e)
-        {
-            
         }
 
         private void textBox1_TextChanged(object sender, EventArgs e)
@@ -618,9 +731,6 @@ namespace MES_N
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
-            bool_isAutoRun = false;
-            timer_Server.Enabled = false;
-            MPU.conn.Close();
         }
 
         private void Form1_Shown(object sender, EventArgs e)
@@ -873,6 +983,24 @@ namespace MES_N
             {
                 SetHistoryLog();
             }
+        }
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            for (int i = 0; i < thread_count; i++)
+            {
+                if (Thread_MesNetSite[i].IsAlive)
+                {
+                    Thread_MesNetSite[i].Abort();
+                }
+            }
+
+            e.Cancel = true;
+
+            bool_isAutoRun = false;
+            MPU.conn.Close();
+
+            this.Close();
         }
     }
 }

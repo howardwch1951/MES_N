@@ -100,7 +100,6 @@ namespace MES_N
         {
             if (bool_tcpclientconnect_Action == false)
             {
-
                 bool_tcpclientconnect_Action = true;
                 //宣告tcp連接 
 
@@ -150,6 +149,7 @@ namespace MES_N
                 }
                 catch (Exception EX)
                 {
+                    SetErrorStatic();
                     if (EX.Source != null)
                     {
 
@@ -176,11 +176,13 @@ namespace MES_N
         Boolean boolMESnetISrun = false;
 
         Boolean isConnect = false;
+        Boolean isDBreConnect = false;
 
-
-        DateTime disTime = DateTime.Now;
+        DateTime IOdisTime = DateTime.Now;
+        DateTime DBdisTime = DateTime.Now;
+        private delegate void InvokeDelegate();
         //執行緒主要執行區塊
-        public void MesNetSiteRunning()
+        public void MesNetSiteRunning(object param1)
         {
             // String_TID = "111";
             do
@@ -260,14 +262,14 @@ namespace MES_N
                                 SetErrorStatic();
 
                                 // 30秒重新連線一次
-                                if ((DateTime.Now - disTime).Seconds >= 10)
+                                if ((DateTime.Now - IOdisTime).Seconds >= 10)
                                 {
                                     isConnect = false;
                                 }
 
                                 if (isConnect == false && bool_tcpclientconnect_Action == false)
                                 {
-                                    disTime = DateTime.Now;
+                                    IOdisTime = DateTime.Now;
                                     isConnect = true;
                                     //重新建立連結
                                     TcpClientConnect();
@@ -294,14 +296,14 @@ namespace MES_N
                                 Console.WriteLine("M0182:空值處理，重新連線[" + String_DIP + "] Exception source: {0}", EXnull.Source + ":" + EXnull.Message);
 
                                 // 30秒重新連線一次
-                                if ((DateTime.Now - disTime).Seconds >= 10)
+                                if ((DateTime.Now - IOdisTime).Seconds >= 10)
                                 {
                                     isConnect = false;
                                 }
 
                                 if (isConnect == false && bool_tcpclientconnect_Action == false)
                                 {
-                                    disTime = DateTime.Now;
+                                    IOdisTime = DateTime.Now;
                                     isConnect = true;
                                     //重新建立連結
                                     TcpClientConnect();
@@ -323,7 +325,7 @@ namespace MES_N
                         }
                         catch (Exception EX)
                         {
-
+                            MPU.WriteErrorCode("", "MesNetSiteRunning" + EX.Message);
                             if (EX.Source != null)
                             {
 
@@ -334,9 +336,24 @@ namespace MES_N
                     }
 
                     boolMESnetISrun = false;
+                    Form1.form1.Invoke(new InvokeDelegate(UpdateValue));
+                    
+                }
 
-                    UpdateValue();
+                // 如果資料庫斷線，就每30秒重新連線一次
+                if (MPU.Ethernet == false)
+                {
+                    if ((DateTime.Now - DBdisTime).Seconds >= 30)
+                    {
+                        isDBreConnect = true;
+                    }
 
+                    if (isDBreConnect == true)
+                    {
+                        DBdisTime = DateTime.Now;
+                        isDBreConnect = false;
+                        Check_Connection.CheckConnaction();
+                    }
                 }
 
             } while (bool_AutoRun);
@@ -366,123 +383,259 @@ namespace MES_N
         Boolean isUpdate = true;
         private void UpdateValue()
         {
-            if (Form1.form1.InvokeRequired)
+            try
             {
-                Form1.form1.Invoke(new Action(UpdateValue), new object[] { });
-            }
-            else
-            {
-                try
+                string static_str = "";
+                if (!string.IsNullOrEmpty(MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString()))
                 {
-                    string static_str = "";
-                    if (!string.IsNullOrEmpty(MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString()))
-                    { 
-                        // 若同IP、同PORT時，只讓第一組IP去更新DataTable
-                        if (String_ReData.Length == Convert.ToInt32(address_index.Split(',')[1]) && Convert.ToInt32(address_index.Split(',')[0]) == 1)
+                    // 若同IP、同PORT時，只讓第一組IP去更新DataTable
+                    if (String_ReData.Length == Convert.ToInt32(address_index.Split(',')[1]) && Convert.ToInt32(address_index.Split(',')[0]) == 1)
+                    {
+                        for (int i = 0; i < Convert.ToInt32(address_index.Split(',')[1]); i++)
                         {
-                            for (int i = 0; i < Convert.ToInt32(address_index.Split(',')[1]); i++)
-                            {
-                                MPU.DataTable_Threads.Rows[int_ThreadNum + i]["Static"] = String_ReData[i];
-                            }
+                            MPU.DataTable_Threads.Rows[int_ThreadNum + i]["Static"] = String_ReData[i];
                         }
+                    }
 
-                        static_str = String_DIP + " " + String_NOTE + MPU.static_msg[1];
-                        if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[1]))
+                    Form1.form1.BeginInvoke(new InvokeDelegate(ChangeDatagridviewColor));
+
+                    static_str = String_DIP + " " + String_NOTE + MPU.static_msg[1];
+                    if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[1]))
+                    {
+                        if (MPU.Ethernet == true)
                         {
-                            if (MPU.Ethernet == true)
+                            dt = ReadSQLToDT(string.Format("SELECT * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' and CONTIME IS NULL ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
+                            if (dt.Rows.Count > 0)
                             {
-                                dt = ReadSQLToDT(string.Format("SELECT * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' and CONTIME IS NULL ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
-                                if (dt.Rows.Count > 0)
-                                {
-                                    if (!string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
-                                    {
-                                        ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
-                                    }
-                                }
-                                else
+                                if (!string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
                                 {
                                     ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
                                 }
                             }
-                        }
-                        else if (!MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[2]) && !MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[3]))
-                        {
-                            if (MPU.Ethernet == true)
+                            else
                             {
-                                dt = ReadSQLToDT(string.Format("SELECT TOP (1) * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
-                                if (dt.Rows.Count > 0)
+                                ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+                            }
+                        }
+                    }
+                    else if (!MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[2]) && !MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[3]))
+                    {
+                        if (MPU.Ethernet == true)
+                        {
+                            dt = ReadSQLToDT(string.Format("SELECT TOP (1) * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
+                            if (dt.Rows.Count > 0)
+                            {
+                                if (string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
                                 {
-                                    if (string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
-                                    {
-                                        //ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, CONTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
-                                        ReadSQLToDT(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
-                                    }
+                                    //ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, CONTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+                                    ReadSQLToDT(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
                                 }
                             }
                         }
-
-                        #region 更新即時警報
-                        // 30秒更新一次即時警報一次
-                        if (isUpdate)
-                        {
-                            // 記錄更新當下時間
-                            UpdateTime = DateTime.Now;
-                            string concat_str = "";
-                            for (int j = 0; j < MPU.DataTable_Threads.Rows.Count; j++)
-                            {
-                                concat_str += "'" + MPU.DataTable_Threads.Rows[j]["DIP"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["ADDRESS"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["NOTE"].ToString() + "'" + ",";
-                            }
-                            concat_str = concat_str.Trim(',');
-                            MPU.DataTable_CurrLog = null;
-
-                            if (MPU.Ethernet == true)
-                            {
-                                MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
-
-                                Form1.form1.Datagridview_Log[0].DataSource = MPU.DataTable_CurrLog;
-
-                                Form1.form1.Datagridview_Log[0].Columns[0].Width = 100;
-                                Form1.form1.Datagridview_Log[0].Columns[1].Width = 60;
-                                Form1.form1.Datagridview_Log[0].Columns[2].Width = 859;
-                                Form1.form1.Datagridview_Log[0].Columns[3].Width = 224;
-                            }
-                            isUpdate = false;
-                        }
-
-                        if ((DateTime.Now - UpdateTime).Seconds >= 30)
-                        {
-                            isUpdate = true;
-                        }
-                        #endregion                        
                     }
 
-                    if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[3]))
-                    {
-                        //MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = String_ReData[0];
-                        // 30秒內若撈不到I/O的資料就更改狀態
-                        if ((DateTime.Now - noDataTime).Seconds >= 30)
-                        {
-                            MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[2];
-                        }
-                        else
-                        {
-                            MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[3];
-                            //MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[3];
-                        }
-                    }
+                    #region 更新即時警報
+                    //// 30秒更新一次即時警報一次
+                    //if (isUpdate)
+                    //{
+                    //    isUpdate = false;
+                    //    // 記錄更新當下時間
+                    //    UpdateTime = DateTime.Now;
+                    //    string concat_str = "";
+                    //    for (int j = 0; j < MPU.DataTable_Threads.Rows.Count; j++)
+                    //    {
+                    //        concat_str += "'" + MPU.DataTable_Threads.Rows[j]["DIP"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["ADDRESS"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["NOTE"].ToString() + "'" + ",";
+                    //    }
+                    //    concat_str = concat_str.Trim(',');
+                    //    MPU.DataTable_CurrLog = null;
 
-                    if (bool_isThreadSet)
-                    {
-                        Form1.form1.ChangeColor(int_ThreadNum);
-                    }
+                    //    if (MPU.Ethernet == true)
+                    //    {
+                    //        MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
+
+                    //        Form1.form1.Datagridview_Log[0].DataSource = MPU.DataTable_CurrLog;
+
+                    //        Form1.form1.Datagridview_Log[0].Columns[0].Width = 100;
+                    //        Form1.form1.Datagridview_Log[0].Columns[1].Width = 60;
+                    //        Form1.form1.Datagridview_Log[0].Columns[2].Width = 859;
+                    //        Form1.form1.Datagridview_Log[0].Columns[3].Width = 224;
+                    //    }
+                    //}
+
+                    //if ((DateTime.Now - UpdateTime).Seconds >= 30)
+                    //{
+                    //    isUpdate = true;
+                    //}
+                    #endregion
                 }
-                catch (Exception ex)
+
+                if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[3]))
                 {
-                    Console.WriteLine(ex);
-                    throw ex;
+                    //MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = String_ReData[0];
+                    // 30秒內若撈不到I/O的資料就更改狀態
+                    if ((DateTime.Now - noDataTime).Seconds >= 30)
+                    {
+                        MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[2];
+                    }
+                    else
+                    {
+                        MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[3];
+                        //MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[3];
+                    }
                 }
+
+                //if (bool_isThreadSet)
+                //{
+
+                //    if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[1]))
+                //    {
+                //        Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
+                //    }
+                //    else
+                //    {
+                //        Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.White;
+                //    }
+                //    //Form1.form1.ChangeColor(int_ThreadNum);
+                //}
+                Application.DoEvents();
+            }
+            catch (Exception ex)
+            {
+                MPU.WriteErrorCode("", "MesNetSite UpdateValue : " + ex.Message);
+                Console.WriteLine(ex);
+                throw ex;
+            }
+
+            //if (Form1.form1.InvokeRequired)
+            //{
+            //    Form1.form1.Invoke(new InvokeDelegate(UpdateValue));
+            //}
+            //else
+            //{
+            //    try
+            //    {
+            //        string static_str = "";
+            //        if (!string.IsNullOrEmpty(MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString()))
+            //        { 
+            //            // 若同IP、同PORT時，只讓第一組IP去更新DataTable
+            //            if (String_ReData.Length == Convert.ToInt32(address_index.Split(',')[1]) && Convert.ToInt32(address_index.Split(',')[0]) == 1)
+            //            {
+            //                for (int i = 0; i < Convert.ToInt32(address_index.Split(',')[1]); i++)
+            //                {
+            //                    MPU.DataTable_Threads.Rows[int_ThreadNum + i]["Static"] = String_ReData[i];
+            //                }
+            //            }
+
+            //            static_str = String_DIP + " " + String_NOTE + MPU.static_msg[1];
+            //            if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[1]))
+            //            {
+            //                if (MPU.Ethernet == true)
+            //                {
+            //                    dt = ReadSQLToDT(string.Format("SELECT * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' and CONTIME IS NULL ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
+            //                    if (dt.Rows.Count > 0)
+            //                    {
+            //                        if (!string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
+            //                        {
+            //                            ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+            //                        }
+            //                    }
+            //                    else
+            //                    {
+            //                        ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+            //                    }
+            //                }
+            //            }
+            //            else if (!MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[2]) && !MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[3]))
+            //            {
+            //                if (MPU.Ethernet == true)
+            //                {
+            //                    dt = ReadSQLToDT(string.Format("SELECT TOP (1) * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
+            //                    if (dt.Rows.Count > 0)
+            //                    {
+            //                        if (string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
+            //                        {
+            //                            //ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, CONTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+            //                            ReadSQLToDT(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
+            //                        }
+            //                    }
+            //                }
+            //            }
+
+            //            #region 更新即時警報
+            //            //// 30秒更新一次即時警報一次
+            //            //if (isUpdate)
+            //            //{
+            //            //    isUpdate = false;
+            //            //    // 記錄更新當下時間
+            //            //    UpdateTime = DateTime.Now;
+            //            //    string concat_str = "";
+            //            //    for (int j = 0; j < MPU.DataTable_Threads.Rows.Count; j++)
+            //            //    {
+            //            //        concat_str += "'" + MPU.DataTable_Threads.Rows[j]["DIP"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["ADDRESS"].ToString() + "," + MPU.DataTable_Threads.Rows[j]["NOTE"].ToString() + "'" + ",";
+            //            //    }
+            //            //    concat_str = concat_str.Trim(',');
+            //            //    MPU.DataTable_CurrLog = null;
+
+            //            //    if (MPU.Ethernet == true)
+            //            //    {
+            //            //        MPU.DataTable_CurrLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
+
+            //            //        Form1.form1.Datagridview_Log[0].DataSource = MPU.DataTable_CurrLog;
+
+            //            //        Form1.form1.Datagridview_Log[0].Columns[0].Width = 100;
+            //            //        Form1.form1.Datagridview_Log[0].Columns[1].Width = 60;
+            //            //        Form1.form1.Datagridview_Log[0].Columns[2].Width = 859;
+            //            //        Form1.form1.Datagridview_Log[0].Columns[3].Width = 224;
+            //            //    }
+            //            //}
+
+            //            //if ((DateTime.Now - UpdateTime).Seconds >= 30)
+            //            //{
+            //            //    isUpdate = true;
+            //            //}
+            //            #endregion                        
+            //        }
+
+            //        if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[3]))
+            //        {
+            //            //MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = String_ReData[0];
+            //            // 30秒內若撈不到I/O的資料就更改狀態
+            //            if ((DateTime.Now - noDataTime).Seconds >= 30)
+            //            {
+            //                MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[2];
+            //            }
+            //            else
+            //            {
+            //                MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[3];
+            //                //MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"] = MPU.static_msg[3];
+            //            }
+            //        }
+
+            //        if (bool_isThreadSet)
+            //        {
+            //            Form1.form1.ChangeColor(int_ThreadNum);
+            //        }
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        Console.WriteLine(ex);
+            //        throw ex;
+            //    }
+            //}
+        }
+
+        private void ChangeDatagridviewColor()
+        {
+            if (MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.DataTable_Threads.Rows[int_ThreadNum]["Static"].ToString().Contains(MPU.static_msg[1]))
+            {
+                Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
+            }
+            else
+            {
+                Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.White;
             }
         }
+
 
         #region 讀取SQL資料庫
         /// <summary>

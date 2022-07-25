@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -52,6 +53,45 @@ namespace MES_N
         {
 
             Arry_Str_Set = StrDataColumnsName.Split(',');           
+
+        }
+
+        static string strErrorMessageLOG = "";
+        public static void WriteErrorCode(String strSourceID, String strErrorMessage)
+        {
+            if (!File.Exists(System.Environment.CurrentDirectory + @"\Log\error.txt"))
+            {
+                if (!Directory.Exists(System.Environment.CurrentDirectory + @"\Log\"))
+                {
+                    Directory.CreateDirectory(System.Environment.CurrentDirectory + @"\Log\");
+                }
+
+                using (System.IO.FileStream fs = System.IO.File.Create(System.Environment.CurrentDirectory + @"\Log\error.txt"))
+                {
+                }
+            }
+
+            //重覆的錯誤，就不要再記錄了。
+            if (strErrorMessage != strErrorMessageLOG)
+            {
+
+                //如果檔案太大就清空文字檔。
+                FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\Log\error.txt");
+                Boolean bool_OverWriter = true;
+
+                if (f.Length > 50000)
+                {
+                    bool_OverWriter = false;
+                }
+
+                using (System.IO.StreamWriter file = new System.IO.StreamWriter(System.Environment.CurrentDirectory + @"\Log\error.txt", bool_OverWriter))
+                {
+                    file.WriteLine(DateTime.Now.ToString("yyyyMMdd HH:mm:ss") + ":" + strErrorMessage);
+                }
+
+                strErrorMessageLOG = strErrorMessage;
+
+            }
 
         }
 
