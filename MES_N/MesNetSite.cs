@@ -404,17 +404,17 @@ namespace MES_N
                     {
                         if (MPU.Ethernet == true)
                         {
-                            dt = ReadSQLToDT(string.Format("SELECT * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' and CONTIME IS NULL ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
+                            dt = MPU.ReadSQLToDT(string.Format("SELECT * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' and CONTIME IS NULL ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
                             if (dt.Rows.Count > 0)
                             {
                                 if (!string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
                                 {
-                                    ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+                                    MPU.ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
                                 }
                             }
                             else
                             {
-                                ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+                                MPU.ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
                             }
                         }
                     }
@@ -422,13 +422,13 @@ namespace MES_N
                     {
                         if (MPU.Ethernet == true)
                         {
-                            dt = ReadSQLToDT(string.Format("SELECT TOP (1) * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
+                            dt = MPU.ReadSQLToDT(string.Format("SELECT TOP (1) * FROM tb_connectlog WHERE DIP = '{0}' and ADDRESS = '{1}' and DVALUE = '{2}' ORDER BY SYSTIME DESC", String_DIP, String_Address, String_NOTE));
                             if (dt.Rows.Count > 0)
                             {
                                 if (string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
                                 {
                                     //ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, CONTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
-                                    ReadSQLToDT(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
+                                    MPU.ReadSQLToDT(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
                                 }
                             }
                         }
@@ -637,61 +637,7 @@ namespace MES_N
         }
 
 
-        #region 讀取SQL資料庫
-        /// <summary>
-        /// 讀取SQL資料庫(請確認SQL指令是否正確)
-        /// </summary>
-        /// <param name="pSQL">SQL指令</param>
-        private DataTable ReadSQLToDT(string pSQL)
-        {
-            DataTable dtSource = new DataTable();
-            try
-            {
-                if(Check_Connection.CheckConnaction())
-                {
-                    using (SqlConnection conn = new SqlConnection("server=192.168.0.180;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=28921148"))
-                    {
-                        SqlCommand cmd = new SqlCommand(pSQL, conn);
-                        SqlDataAdapter adapter = new SqlDataAdapter(cmd);
-                        adapter.Fill(dtSource);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MPU.Ethernet = false;
-                throw ex;
-            }
-            return dtSource;
-        }
-        #endregion
-
-        #region 寫入資料
-        /// <summary>
-        /// 寫入資料(請確認路徑是否正確)
-        /// </summary>
-        /// <param name="path">路徑</param>
-        /// <param name="name">檔名</param>
-        /// <param name="content">寫入內容(若未找到指定檔案則會生成)</param>
-        public void WriteData(string path, string name, string content)
-        {
-            try
-            {
-                string write_path = path + @"\" + name;
-
-                using (System.IO.StreamWriter wf = new System.IO.StreamWriter(write_path, true))
-                {
-
-                    wf.WriteLine(content);
-
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
-        }
-        #endregion
+        
 
         #region 計算CRC檢查碼
         /// <summary>

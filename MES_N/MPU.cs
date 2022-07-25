@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -44,6 +45,63 @@ namespace MES_N
 
         //public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection("server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!");
         public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection(conStr);
+
+        #region 讀取SQL資料庫
+        /// <summary>
+        /// 讀取SQL資料庫(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        public static DataTable ReadSQLToDT(string pSQL)
+        {
+            DataTable dtSource = new DataTable();
+            try
+            {
+                if (Check_Connection.CheckConnaction())
+                {
+                    using (SqlConnection conn = new SqlConnection(conStr))
+                    {
+                        SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        SqlDataAdapter adapter = new SqlDataAdapter(cmd);
+                        adapter.Fill(dtSource);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MPU.Ethernet = false;
+                throw ex;
+            }
+            return dtSource;
+        }
+        #endregion
+
+        #region 寫入資料
+        /// <summary>
+        /// 寫入資料(請確認路徑是否正確)
+        /// </summary>
+        /// <param name="path">路徑</param>
+        /// <param name="name">檔名</param>
+        /// <param name="content">寫入內容(若未找到指定檔案則會生成)</param>
+        public static void WriteData(string path, string name, string content)
+        {
+            try
+            {
+                string write_path = path + @"\" + name;
+
+                using (System.IO.StreamWriter wf = new System.IO.StreamWriter(write_path, true))
+                {
+
+                    wf.WriteLine(content);
+
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+        }
+        #endregion
+
         /// <summary>
         /// 設定系統自建資料欄位
         /// </summary>
