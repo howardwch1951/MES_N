@@ -5,6 +5,7 @@ using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Windows.Forms;
 
 namespace MES_N
 {
@@ -31,7 +32,7 @@ namespace MES_N
 
         public static DataTable DataTable_HistLog = new DataTable();
 
-        public static String[] static_msg = new string[] { "Ex", "I/O網路連線失敗", "I/O設備查無資料" ,"連線中..."};
+        public static String[] status_msg = new string[] { "Ex", "I/O網路連線失敗", "I/O設備查無資料" ,"連線中..."};
 
         public static String str_Barcode = "";
 
@@ -114,43 +115,48 @@ namespace MES_N
 
         }
 
+        private static readonly object D_Lock = new object();
         static string strErrorMessageLOG = "";
         public static void WriteErrorCode(String strSourceID, String strErrorMessage)
         {
-            if (!File.Exists(System.Environment.CurrentDirectory + @"\Log\error.txt"))
+            lock (D_Lock)
             {
-                if (!Directory.Exists(System.Environment.CurrentDirectory + @"\Log\"))
+                string write_path = System.Environment.CurrentDirectory + @"\Log\error.txt";
+
+                if (!File.Exists(System.Environment.CurrentDirectory + @"\Log\error.txt"))
                 {
-                    Directory.CreateDirectory(System.Environment.CurrentDirectory + @"\Log\");
+                    if (!Directory.Exists(System.Environment.CurrentDirectory + @"\Log\"))
+                    {
+                        Directory.CreateDirectory(System.Environment.CurrentDirectory + @"\Log\");
+                    }
+
+                    using (System.IO.FileStream fs = System.IO.File.Create(System.Environment.CurrentDirectory + @"\Log\error.txt"))
+                    {
+                    }
                 }
 
-                using (System.IO.FileStream fs = System.IO.File.Create(System.Environment.CurrentDirectory + @"\Log\error.txt"))
+                //重覆的錯誤，就不要再記錄了。
+                if (strErrorMessage != strErrorMessageLOG)
                 {
+
+                    //如果檔案太大就清空文字檔。
+                    FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\Log\error.txt");
+                    Boolean bool_OverWriter = true;
+
+                    if (f.Length > 50000)
+                    {
+                        bool_OverWriter = false;
+                    }
+
+                    using (System.IO.StreamWriter wf = new System.IO.StreamWriter(write_path, true, System.Text.Encoding.GetEncoding("big5")))
+                    {
+                        wf.WriteLine(DateTime.Now.ToString("yyyyMMdd HH:mm:ss") + ":" + strErrorMessage);
+                    }
+
+                    strErrorMessageLOG = strErrorMessage;
+
                 }
             }
-
-            //重覆的錯誤，就不要再記錄了。
-            if (strErrorMessage != strErrorMessageLOG)
-            {
-
-                //如果檔案太大就清空文字檔。
-                FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\Log\error.txt");
-                Boolean bool_OverWriter = true;
-
-                if (f.Length > 50000)
-                {
-                    bool_OverWriter = false;
-                }
-
-                using (System.IO.StreamWriter file = new System.IO.StreamWriter(System.Environment.CurrentDirectory + @"\Log\error.txt", bool_OverWriter))
-                {
-                    file.WriteLine(DateTime.Now.ToString("yyyyMMdd HH:mm:ss") + ":" + strErrorMessage);
-                }
-
-                strErrorMessageLOG = strErrorMessage;
-
-            }
-
         }
 
         /// <summary>
