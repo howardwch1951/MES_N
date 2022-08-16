@@ -172,6 +172,7 @@
             dataGridViewCellStyle2.WrapMode = System.Windows.Forms.DataGridViewTriState.True;
             this.dataGridView_Threads.RowsDefaultCellStyle = dataGridViewCellStyle2;
             this.dataGridView_Threads.RowTemplate.Height = 24;
+            this.dataGridView_Threads.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.dataGridView_Threads.Size = new System.Drawing.Size(1262, 616);
             this.dataGridView_Threads.TabIndex = 11;
             // 
@@ -566,6 +567,7 @@
             this.dataGridView_Result.ReadOnly = true;
             this.dataGridView_Result.RowHeadersVisible = false;
             this.dataGridView_Result.RowTemplate.Height = 24;
+            this.dataGridView_Result.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.dataGridView_Result.Size = new System.Drawing.Size(938, 510);
             this.dataGridView_Result.TabIndex = 4;
             this.dataGridView_Result.TabStop = false;
@@ -616,6 +618,7 @@
             this.dataGridView_CurrLog.ReadOnly = true;
             this.dataGridView_CurrLog.RowHeadersVisible = false;
             this.dataGridView_CurrLog.RowTemplate.Height = 24;
+            this.dataGridView_CurrLog.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.dataGridView_CurrLog.Size = new System.Drawing.Size(1270, 650);
             this.dataGridView_CurrLog.TabIndex = 5;
             this.dataGridView_CurrLog.TabStop = false;
@@ -673,6 +676,7 @@
             this.dataGridView_HistLog.ReadOnly = true;
             this.dataGridView_HistLog.RowHeadersVisible = false;
             this.dataGridView_HistLog.RowTemplate.Height = 24;
+            this.dataGridView_HistLog.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.dataGridView_HistLog.Size = new System.Drawing.Size(1270, 559);
             this.dataGridView_HistLog.TabIndex = 112;
             this.dataGridView_HistLog.TabStop = false;

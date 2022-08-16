@@ -93,7 +93,7 @@ namespace MES_N
 
                 } while (!(strLine == null));
 
-                Datatable_showtxt.DefaultView.Sort = "DIP asc";
+                Datatable_showtxt.DefaultView.Sort = "DIP asc, Sclass asc";
                 Datatable_showtxt = Datatable_showtxt.DefaultView.ToTable(true);
 
                 StreamReader_Txt.Close();
@@ -110,11 +110,10 @@ namespace MES_N
 
             }
 
-        }               
- 
-        List<string> txt = new List<string>();
-        List<string> address_index = new List<string>();
-        int[,] index;
+        }
+
+        List<int> index = new List<int>();
+        Dictionary<String, Dictionary<String, List<String>>> EquipDic = new Dictionary<String, Dictionary<String, List<String>>>();
         private void SetThreads()
         {
             Console.WriteLine("[SetThreads]");
@@ -141,7 +140,7 @@ namespace MES_N
                     Datatable_showtxt.Rows[i]["Sclass"].ToString() ,
                     Datatable_showtxt.Rows[i]["SID"].ToString().Replace('.',' ') ,
                     Datatable_showtxt.Rows[i]["NOTE"].ToString() +  "_" +
-                    Datatable_showtxt.Rows[i]["text"].ToString() , "連線中...",
+                    Datatable_showtxt.Rows[i]["text"].ToString(), "連線中...",
                     };
 
                     MPU.DataTable_Threads.Rows.Add(String_RowData);
@@ -178,62 +177,28 @@ namespace MES_N
 
                 SetDatagridview();
 
+                int count = 0;
                 foreach (DataRow row in Datatable_showtxt.Rows)
                 {
-                    if (!txt.Contains(row["DIP"].ToString() + row["Port"].ToString())) // 判斷有沒有重覆。
+                    string ip = row["DIP"].ToString();
+                    string port = row["Port"].ToString();
+                    string sclass = row["Sclass"].ToString();
+
+                    // IP不存在時，加入新的字典
+                    if (!EquipDic.ContainsKey(ip))
+                        EquipDic.Add(ip, new Dictionary<String, List<String>>());
+
+                    // Port不存在時，加入新的List
+                    if (!EquipDic[ip].ContainsKey(port))
                     {
-                        txt.Add(row["DIP"].ToString() + "," + row["Port"].ToString());
+                        EquipDic[ip].Add(port, new List<String>());
+                        index.Add(count);
                     }
+
+                    count++;
+                    EquipDic[ip][port].Add(sclass);
                 }
-                int count = 1;
-                int row_index = 0;
-                index = new int[txt.Count, 1];
-                for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
-                {
-                    if (i != Datatable_showtxt.Rows.Count - 1)
-                    {
-                        if (Datatable_showtxt.Rows[i]["DIP"].ToString() + Datatable_showtxt.Rows[i]["Port"].ToString() == Datatable_showtxt.Rows[i + 1]["DIP"].ToString() + Datatable_showtxt.Rows[i + 1]["Port"].ToString())
-                        {
-                            count++;
-                            index[row_index, 0] = count;
-                        }
-                        else
-                        {
-                            if (i != 0)
-                            {
-                                count = 1;
-                                row_index++;
-                                index[row_index, 0] = count;
-                            }
-                            else
-                            {
-                                count = 1;
-                                index[row_index, 0] = count;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (Datatable_showtxt.Rows.Count == 1)
-                        {
-                            count = 1;
-                            index[row_index, 0] = count;
-                        }
-                        else
-                        {
-                            count = 1;
-                            row_index++;
-                            index[row_index, 0] = count;
-                        }
-                    }
-                }
-                for (int i = 0; i < txt.Count; i++)
-                {
-                    for (int j = 0; j < index[i, 0]; j++)
-                    {
-                        address_index.Add((j + 1).ToString() + "," + index[i, 0].ToString());
-                    }                    
-                }
+                
                 new Thread(SetDatagridviewValue).Start();
 
                
@@ -257,72 +222,74 @@ namespace MES_N
         {
             try
             {
-                Action[] action = new Action[Datatable_showtxt.Rows.Count];
+                Array.Resize(ref MesNetSite_Sys, EquipDic.Values.SelectMany(t => t).Count());
 
-                Array.Resize(ref MesNetSite_Sys, Datatable_showtxt.Rows.Count);
-
-                Array.Resize(ref Thread_MesNetSite, Datatable_showtxt.Rows.Count);
+                Array.Resize(ref Thread_MesNetSite, EquipDic.Values.SelectMany(t => t).Count());
 
 
                 for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
                 {
-                    MesNetSite_Sys[i] = new MesNetSite();
+                    if (index.Contains(i))
+                    {
+                        int n = index.IndexOf(i);
+                        MesNetSite_Sys[n] = new MesNetSite();
 
-                    MesNetSite_Sys[i].String_TID = MPU.DataTable_Threads.Rows[i]["TID"].ToString();
+                        MesNetSite_Sys[n].String_TID = MPU.DataTable_Threads.Rows[i]["TID"].ToString();
 
-                    MesNetSite_Sys[i].String_Dline = MPU.DataTable_Threads.Rows[i]["Dline"].ToString();
+                        MesNetSite_Sys[n].String_Dline = MPU.DataTable_Threads.Rows[i]["Dline"].ToString();
 
-                    MesNetSite_Sys[i].String_DIP = MPU.DataTable_Threads.Rows[i]["DIP"].ToString();
+                        MesNetSite_Sys[n].String_DIP = MPU.DataTable_Threads.Rows[i]["DIP"].ToString();
 
-                    MesNetSite_Sys[i].String_SID = MPU.DataTable_Threads.Rows[i]["SID"].ToString();
+                        MesNetSite_Sys[n].String_SID = MPU.DataTable_Threads.Rows[i]["SID"].ToString();
 
-                    MesNetSite_Sys[i].String_Port = MPU.DataTable_Threads.Rows[i]["Port"].ToString();
+                        MesNetSite_Sys[n].String_Port = MPU.DataTable_Threads.Rows[i]["Port"].ToString();
 
-                    MesNetSite_Sys[i].String_Address = MPU.DataTable_Threads.Rows[i]["Address"].ToString();
+                        MesNetSite_Sys[n].String_Address = MPU.DataTable_Threads.Rows[i]["Address"].ToString();
 
-                    MesNetSite_Sys[i].Str_Portid = MPU.DataTable_Threads.Rows[i]["Portid"].ToString();
+                        MesNetSite_Sys[n].Str_Portid = MPU.DataTable_Threads.Rows[i]["Portid"].ToString();
 
-                    MesNetSite_Sys[i].String_Sclass = MPU.DataTable_Threads.Rows[i]["Sclass"].ToString();
+                        MesNetSite_Sys[n].String_Sclass = MPU.DataTable_Threads.Rows[i]["Sclass"].ToString();
 
-                    MesNetSite_Sys[i].String_NOTE = MPU.DataTable_Threads.Rows[i]["NOTE"].ToString();
+                        MesNetSite_Sys[n].String_NOTE = MPU.DataTable_Threads.Rows[i]["NOTE"].ToString();
 
-                    MesNetSite_Sys[i].address_index = address_index[i];
+                        MesNetSite_Sys[n].EquipDic = EquipDic[MPU.DataTable_Threads.Rows[i]["DIP"].ToString()];
 
-                    Array.Resize(ref MesNetSite_Sys[i].String_ReData, 1);
-                    MesNetSite_Sys[i].String_ReData[0] = MPU.status_msg[3];
+                        //Array.Resize(ref MesNetSite_Sys[n].String_ReData, 1);
+                        //MesNetSite_Sys[n].String_ReData[0] = MPU.status_msg[3];
 
-                    MesNetSite_Sys[i].int_ThreadNum = i;
+                        MesNetSite_Sys[n].int_ThreadNum = index[n];
 
-                    MesNetSite_Sys[i].int_timeOutMsec = 0;
+                        MesNetSite_Sys[n].int_timeOutMsec = 0;
 
-                    MesNetSite_Sys[i].int_ReaderSleep = 1000;
+                        MesNetSite_Sys[n].int_ReaderSleep = 1000;
 
-                    MesNetSite_Sys[i].int_ReaderSleepSET = 1000;
+                        MesNetSite_Sys[n].int_ReaderSleepSET = 1000;
 
-                    MesNetSite_Sys[i].bool_AutoRun = true;
+                        MesNetSite_Sys[n].bool_AutoRun = true;
 
-                    MesNetSite_Sys[i].bool_isThreadSet = true;
+                        MesNetSite_Sys[n].bool_isThreadSet = true;
 
-                    MesNetSite_Sys[i].TcpClientConnect();
+                        MesNetSite_Sys[n].TcpClientConnect();
 
 
-                    //'宣告一個執行緒來處理 reader讀取 電子標籤的動作。
-                    //Thread_MesNetSite[i] = new System.Threading.Thread(MesNetSite_Sys[i].MesNetSiteRunning);
-                    //Thread_MesNetSite[i].IsBackground = true;
-                    //Thread_MesNetSite[i].Start();
+                        //'宣告一個執行緒來處理 reader讀取 電子標籤的動作。
+                        //Thread_MesNetSite[i] = new System.Threading.Thread(MesNetSite_Sys[i].MesNetSiteRunning);
+                        //Thread_MesNetSite[i].IsBackground = true;
+                        //Thread_MesNetSite[i].Start();
 
-                    //ThreadPool.QueueUserWorkItem(new WaitCallback(MesNetSite_Sys[i].MesNetSiteRunning));
+                        //ThreadPool.QueueUserWorkItem(new WaitCallback(MesNetSite_Sys[i].MesNetSiteRunning));
 
-                    //(new TaskFactory()).StartNew(() =>
-                    //{
-                    //    MesNetSite_Sys[i].MesNetSiteRunning();
-                    //});
+                        //(new TaskFactory()).StartNew(() =>
+                        //{
+                        //    MesNetSite_Sys[i].MesNetSiteRunning();
+                        //});
 
-                    //action[thread_count] = ()=>MesNetSite_Sys[thread_count].MesNetSiteRunning();
+                        //action[thread_count] = ()=>MesNetSite_Sys[thread_count].MesNetSiteRunning();
 
-                    thread_count++;
+                        thread_count++;
+                    }
                 }
-                Parallel.For(0, Datatable_showtxt.Rows.Count, (i, state) =>
+                Parallel.For(0, EquipDic.Values.SelectMany(t => t).Count(), (i, state) =>
                 {
                     MesNetSite_Sys[i].MesNetSiteRunning();
                     if (state.IsStopped)
