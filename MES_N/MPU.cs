@@ -5,6 +5,7 @@ using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace MES_N
@@ -26,23 +27,23 @@ namespace MES_N
 
         public static Boolean isStatusChange = false;
 
-        public static DataTable DataTable_Threads = new DataTable();
+        public static DataTable dt_MainTable = new DataTable();
 
-        public static DataTable DataTable_CurrLog = new DataTable();
+        public static DataTable dt_CurrentLog = new DataTable();
 
-        public static DataTable DataTable_HistLog = new DataTable();
+        public static DataTable dt_HistoryLog = new DataTable();
 
-        public static String[] status_msg = new string[] { "Ex", "I/O網路連線失敗", "I/O設備查無資料" ,"連線中..."};
+        public static String[] str_DeviceMessage = new string[] { "Ex", "網路連線失敗", "設備查無資料" ,"連線中..."};
 
         public static String str_Barcode = "";
 
-        public static List<String> histLog = new List<String>();
+        public static List<String> list_HistoryLog = new List<String>();
 
-        public static List<String> currLog = new List<String>();
+        public static List<String> list_CurrentLog = new List<String>();
 
         public static Boolean Ethernet = false;
 
-        public static String conStr = "server=192.168.0.180;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=28921148";
+        public static String conStr = "server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
 
         //public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection("server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!");
         public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection(conStr);
@@ -99,6 +100,52 @@ namespace MES_N
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
+            }
+        }
+        #endregion
+
+        #region 讀檔案
+        /// <summary>
+        ///資料讀取
+        /// </summary>
+        /// <param name="path">路徑</param>
+        /// <param name="name">檔名</param>
+        /// <returns>回傳檔名全部內容,長度為0時則內容為空或路徑錯誤</returns>
+        /// <summary>
+        ///資料讀取
+        /// </summary>
+        /// <param name="path">路徑</param>
+        /// <param name="name">檔名</param>
+        /// <returns>回傳檔名全部內容,回傳空值時則內容為空,回傳null為路徑錯誤</returns>
+        public static string[] GetFileData(string path, string name)
+        {
+            string[] content = new string[] { "" };
+            try
+            {
+                string read = "", line;
+                path = path + "/" + name;
+                FileStream logFileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                StreamReader logFileReader = new StreamReader(logFileStream, Encoding.UTF8);
+                while (!logFileReader.EndOfStream)
+                {
+                    line = logFileReader.ReadLine();
+                    read += line + "#@#";
+                }
+                logFileReader.Close();
+                logFileStream.Close();
+                if (read != "")
+                {
+                    read = read.Substring(0, read.Length - 3);
+                    content = Regex.Split(read, "#@#");
+                }
+
+                return content;
+            }
+            catch (Exception ex)
+            {
+                // log with exception here
+
+                return content;
             }
         }
         #endregion
