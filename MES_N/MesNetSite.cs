@@ -3145,15 +3145,15 @@ namespace MES_N
                     }
                 }
             }
-            catch (Exception EX)
+            catch (Exception ex)
             {
-                if (EX.Source != null)
+                if (ex.Source != null)
                 {
                     String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
 
                     String_SQLcommand = "";
 
-                    Console.WriteLine("M0312:Exception source: {0}", EX.Source);
+                    Console.WriteLine("M0312:Exception source: {0}", ex.Source);
                 }
             }
         }
