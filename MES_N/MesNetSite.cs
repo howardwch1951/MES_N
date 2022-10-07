@@ -28,11 +28,10 @@ namespace MES_N
         public String String_SID = "";
         public String String_Sclass = "";
 
-        public String[] str_Command = new string[] { "S1F1", "S1F2", "S1F3", "S1F4", "S1F5" };        
+        public String[] str_Command = new string[] { "S1F1", "S1F2", "S1F3", "S1F4", "S1F5", "S1F6", "S1F7" };        
 
-        public Dictionary<String, List<String>> EquipDic = new Dictionary<String, List<String>>();
+        public Dictionary<String, List<String>> dicDeviceList = new Dictionary<String, List<String>>();
 
-        public Boolean isSensor = false;
         public Boolean bool_AutoRun = false;
         public Boolean bool_isThreadSet = false;     
 
@@ -45,8 +44,8 @@ namespace MES_N
         //17122601
         public string str_Barcode = "";
         public string str_BarcodeLight = "";
-        System.Net.Sockets.NetworkStream NetworkStream_Reader;
-        System.Net.Sockets.TcpClient TcpClient_Reader;
+        public System.Net.Sockets.NetworkStream NetworkStream_Reader;
+        public System.Net.Sockets.TcpClient TcpClient_Reader;
 
         byte[] Byte_Command_Sent_082 = new byte[8];
         byte[] Byte_Command_Sent_083 = new byte[9];
@@ -71,7 +70,6 @@ namespace MES_N
 
         //以防其他執行緒未完成，專門為TCP連結用
         Boolean bool_tcpclientconnect_Action = false;
-
         /// <summary>
         /// 與網路盒建立連結
         /// </summary>
@@ -80,8 +78,8 @@ namespace MES_N
             if (bool_tcpclientconnect_Action == false && bool_AutoRun == true)
             {
                 bool_tcpclientconnect_Action = true;
-                //宣告tcp連接 
 
+                //宣告tcp連接 
                 byte[] Bytes_IP = new byte[4];
                 for (int i = 0; i <= 3; i++)
                 {
@@ -90,12 +88,15 @@ namespace MES_N
 
                 try
                 {
-                    if (!(TcpClient_Reader == null) && TcpClient_Reader.Connected)
+                    if (TcpClient_Reader != null)
                     {
                         TcpClient_Reader.Close();
+                        TcpClient_Reader = null;
+                        Thread.Sleep(100);
                     }
 
                     TcpClient_Reader = TimeOutSocket.Connect(new System.Net.IPEndPoint(new System.Net.IPAddress(Bytes_IP), Convert.ToInt16(String_Port)), 100);
+
                     //
                     if (!(TcpClient_Reader == null) && TcpClient_Reader.Connected)
                     {
@@ -122,6 +123,7 @@ namespace MES_N
                         int_ReaderSleep = int_ReaderSleepSET;
 
                         CommandSet();
+
                     }
                 }
                 catch (Exception EX)
@@ -147,303 +149,499 @@ namespace MES_N
         //製作一個boolean 代表只有單一個動作在執行
         Boolean boolMESnetISrun = false;
 
-        Boolean isConnect = false;
-        Boolean isDBreConnect = false;
         Boolean[] FirstRec = new Boolean[] { };
 
-        DateTime IOdisTime = DateTime.Now;
-        DateTime DBdisTime = DateTime.Now;
-        DateTime[] noDataTime = new DateTime[] { };
+        bool bool_reconnect = true;
 
-        int F11_index = 0;
-        int F15_index = 0;
+        int int_Reconnect = 0;
+        int F11_port = 0;
+        int F15_port = 0;
+
+        StringBuilder sbSQL = new StringBuilder();
 
         private delegate void InvokeDelegate();
         //執行緒主要執行區塊
         public void MesNetSiteRunning()
         {
             // String_TID = "111";
-            do
+            while (bool_AutoRun)
             {
-                //161208 加入判斷tcpclient是否在連結中，如果在連結中就不要做其他動作。
-                if (boolMESnetISrun == false)
+                try
                 {
-                    boolMESnetISrun = true;
+                    //byte[] testRecByte = new byte[1];
+                    ////使用Peek，測試client是否還有連線
+                    //if (!(TcpClient_Reader != null && TcpClient_Reader.Connected))
+                    //{
+                    //    if (int_Reconnect > 10)
+                    //    {
+                    //        int_Reconnect = 0;
+                    //        TcpClientConnect();
+                    //    }
+                    //    int_Reconnect++;
+                    //}
 
-                    Array.Resize(ref String_ReData, Convert.ToInt32(EquipDic[String_Port].Count));
-                    Array.Resize(ref FirstRec, Convert.ToInt32(EquipDic[String_Port].Count));
-                    Array.Resize(ref noDataTime, Convert.ToInt32(EquipDic[String_Port].Count));
-
-                    F11_index = 0;
-                    F15_index = 0;
-
-                    for (int i = 0; i < EquipDic[String_Port].Count; i++)
+                    //161208 加入判斷tcpclient是否在連結中，如果在連結中就不要做其他動作。
+                    if (boolMESnetISrun == false)
                     {
-                        try
+                        boolMESnetISrun = true;
+
+                        // 清除舊的SQL語法
+                        sbSQL.Clear();
+
+                        Array.Resize(ref String_ReData, Convert.ToInt32(dicDeviceList[String_Port].Count));
+                        Array.Resize(ref FirstRec, Convert.ToInt32(dicDeviceList[String_Port].Count));
+
+                        for (int i = 0; i < dicDeviceList[String_Port].Count; i++)     
                         {
-                            index = i;
-
-                            String_TID = MPU.dt_MainTable.Rows[int_ThreadNum + index]["TID"].ToString();
-                            String_SID = MPU.dt_MainTable.Rows[int_ThreadNum + index]["SID"].ToString();
-                            String_NOTE = MPU.dt_MainTable.Rows[int_ThreadNum + index]["NOTE"].ToString();
-
-                            //連結成功才動作
-                            if ((TcpClient_Reader != null) && TcpClient_Reader.Connected)
+                            try
                             {
-                                switch (EquipDic[String_Port][i])
+                                F11_port = 0;
+                                F15_port = 0;
+                                index = i;
+
+                                String_TID = MPU.dt_MainTable.Rows[int_ThreadNum + index]["TID"].ToString();
+                                String_SID = MPU.dt_MainTable.Rows[int_ThreadNum + index]["SID"].ToString();
+                                String_NOTE = MPU.dt_MainTable.Rows[int_ThreadNum + index]["NOTE"].ToString();
+
+                                //連結成功才動作
+                                //if ((TcpClient_Reader != null) && TcpClient_Reader.Connected)
+                                if ((TcpClient_Reader != null) && !TcpClient_Reader.Client.Poll(0, SelectMode.SelectRead))
                                 {
-                                    case "1":
-                                        function_01();
-                                        break;
-                                    case "2": //條碼
-                                        function_02();
-                                        break;
-                                    case "3": //控制燈號模組
-                                        function_WLS_LCS();
-                                        break;
-                                    case "4":
-                                        function_DTS();
-                                        break;
-                                    case "5":
-                                        function_KPS();
-                                        break;
-                                    case "6":
-                                        function_06();
-                                        break;
-                                    case "7":
-                                        function_07();
-                                        break;
-                                    case "8":
-                                        function_DTS_8();
-                                        break;                                    
-                                    case "9": //正壓
-                                        function_09_positive();
-                                        break;                                    
-                                    case "10": //負壓
-                                        function_10_negative();
-                                        break;                                    
-                                    case "11": //流量計
-                                        function_11_flow();
-                                        F11_index++;
-                                        break;                                    
-                                    case "12": //燈號判斷
-                                        function_12_light();
-                                        break;                                    
-                                    case "13": //溫度
-                                        function_13();
-                                        break;                                    
-                                    case "14": //燈號控制
-                                        function_14();
-                                        break;                                    
-                                    case "15": //正壓、負壓(8_1、8_2、8_5、8_6)
-                                        function_15();
-                                        F15_index++;
-                                        break;
-                                    default:
-                                        //SetStatus();
-                                        break;
+                                    switch (dicDeviceList[String_Port][i].Split('_')[0])
+                                    {
+                                        case "1":
+                                            function_01();
+                                            break;
+                                        case "2": //條碼
+                                            function_02();
+                                            break;
+                                        case "3": //控制燈號模組
+                                            function_WLS_LCS();
+                                            break;
+                                        case "4":
+                                            function_DTS();
+                                            break;
+                                        case "5":
+                                            function_KPS();
+                                            break;
+                                        case "6":
+                                            function_06();
+                                            break;
+                                        case "7":
+                                            function_07();
+                                            break;
+                                        case "8":
+                                            function_DTS_8();
+                                            break;
+                                        case "9": //正壓
+                                            function_09_positive();
+                                            break;
+                                        case "10": //負壓
+                                            function_10_negative();
+                                            break;
+                                        case "11": //流量計
+                                            if (dicDeviceList[String_Port][i].Split('_').Length == 2)
+                                                F11_port = Convert.ToInt32(dicDeviceList[String_Port][i].Split('_')[1]);
+                                            function_11_flow(F11_port);
+                                            //if (dicDeviceList[String_Port][i].Split('_').Length == 1)
+                                            //    F11_index++;
+                                            break;
+                                        case "12": //燈號判斷
+                                            function_12_light();
+                                            break;
+                                        case "13": //溫度
+                                            function_13();
+                                            break;
+                                        case "14": //燈號控制
+                                            function_14();
+                                            break;
+                                        case "15": //正壓、負壓(8_1、8_2、8_5、8_6)
+                                            if (dicDeviceList[String_Port][i].Split('_').Length == 2)
+                                                F15_port = Convert.ToInt32(dicDeviceList[String_Port][i].Split('_')[1]);
+                                            function_15(F15_port);
+                                            break;
+                                        case "16": //PC S1F1 燈號
+                                            function_16_pc_light();
+                                            break;
+                                        case "17": //PC S1F2 壓力
+                                            function_17_pc_pressure();
+                                            break;
+                                        case "18": //PC S1F3 流量
+                                            function_18_pc_flow();
+                                            break;
+                                        case "19": //PC S1F4 溫度
+                                            function_19_pc_temperature();
+                                            break;
+                                        case "20": //PC S1F5 吸嘴阻值
+                                            function_20_pc_resistance();
+                                            break;
+                                        case "21": //PC S1F6 H-Judge讀值
+                                            function_21_pc_H_Judge();
+                                            break;
+                                        case "22": //PC S1F7 螢幕辨識參數(Temperature, Power, force, Time)
+                                            function_22_pc_shoucut();
+                                            break;
+                                        case "23": //BrainChild溫度
+                                            function_23_brainchild();
+                                            break;
+                                        case "24": //PC S1F8 舉離機(NMPA, NMPB)
+                                            function_24_pc_NMPA_NMPB();
+                                            break;
+                                        case "25":
+                                            function_25(Convert.ToInt32(dicDeviceList[String_Port][i].Split('_')[1]));
+                                            break;
+                                        default:
+                                            //SetStatus();
+                                            break;
+                                    }
+                                }
+                                else
+                                {
+                                    //連結失敗
+                                    //SetStatus();
+                                    String_ReData[index] = MPU.str_ErrorMessage[1];
+                                    if (bool_reconnect)
+                                    {
+                                        bool_reconnect = false;
+                                        new Thread(Reconnect).Start();
+                                    }
+
+                                    #region 舊的
+                                    //// 30秒重新連線一次
+                                    //if ((DateTime.Now - IOdisTime).Seconds >= 10)
+                                    //{
+                                    //    isConnect = false;
+                                    //}
+
+                                    //if (isConnect == false && bool_tcpclientconnect_Action == false)
+                                    //{
+                                    //    IOdisTime = DateTime.Now;
+                                    //    isConnect = true;
+                                    //    //重新建立連結
+                                    //    TcpClientConnect();
+                                    //}
+
+                                    //161208 超出時間後再連一次。
+                                    //byte_function_03_loop_index += 1;
+
+                                    //當10次沒有連結的時候，重新連線一次。
+                                    //if (byte_function_03_loop_index > 5)
+                                    //{
+                                    //    //重新建立連結
+                                    //    TcpClientConnect();
+
+                                    //    byte_function_03_loop_index = 0;
+
+                                    //}
+                                    #endregion
                                 }
                             }
-                            else
+                            catch (System.NullReferenceException EXnull)
                             {
-                                //連結失敗
-                                //SetStatus();
-
-                                // 30秒重新連線一次
-                                if ((DateTime.Now - IOdisTime).Seconds >= 10)
+                                if (EXnull.Source != null)
                                 {
-                                    isConnect = false;
+                                    Console.WriteLine("M0182:空值處理，重新連線[" + String_DIP + "] Exception source: {0}", EXnull.Source + ":" + EXnull.Message);
+                                    String_ReData[index] = MPU.str_ErrorMessage[1];
+                                    if (bool_reconnect)
+                                    {
+                                        bool_reconnect = false;
+                                        new Thread(Reconnect).Start();
+                                    }
+
+                                    #region 舊的
+                                    //// 30秒重新連線一次
+                                    //if ((DateTime.Now - IOdisTime).Seconds >= 30)
+                                    //{
+                                    //    isConnect = false;
+                                    //}
+
+                                    //if (isConnect == false)
+                                    //{
+                                    //    IOdisTime = DateTime.Now;
+                                    //    isConnect = true;
+                                    //    //重新建立連結
+                                    //    new Thread(TcpClientConnect).Start();
+                                    //}
+
+                                    //161208 超出時間後再連一次。
+                                    //byte_function_03_loop_index += 1;
+
+                                    //當10次沒有連結的時候，重新連線一次。
+                                    //if (byte_function_03_loop_index > 5)
+                                    //{
+                                    //    //重新建立連結
+                                    //    TcpClientConnect();
+
+                                    //    byte_function_03_loop_index = 0;
+
+                                    //}
+                                    #endregion
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                String_ReData[index] = MPU.str_ErrorMessage[1];
+                                if (ex.Source != null)
+                                {
+                                    Console.WriteLine("M0192:Exception source: {0}", ex.Source + ":" + ex.Message);
                                 }
 
-                                if (isConnect == false && bool_tcpclientconnect_Action == false)
+                                if (bool_reconnect)
                                 {
-                                    IOdisTime = DateTime.Now;
-                                    isConnect = true;
-                                    //重新建立連結
-                                    TcpClientConnect();
+                                    bool_reconnect = false;
+                                    new Thread(Reconnect).Start();
                                 }
 
-                                //161208 超出時間後再連一次。
-                                //byte_function_03_loop_index += 1;
-
-                                //當10次沒有連結的時候，重新連線一次。
-                                //if (byte_function_03_loop_index > 5)
+                                #region 舊的
+                                //// 30秒重新連線一次
+                                //if ((DateTime.Now - IOdisTime).Seconds >= 30)
                                 //{
-                                //    //重新建立連結
-                                //    TcpClientConnect();
-
-                                //    byte_function_03_loop_index = 0;
-
+                                //    isConnect = false;
                                 //}
-                            }
-                        }
-                        catch (System.NullReferenceException EXnull)
-                        {
-                            if (EXnull.Source != null)
-                            {
-                                Console.WriteLine("M0182:空值處理，重新連線[" + String_DIP + "] Exception source: {0}", EXnull.Source + ":" + EXnull.Message);
 
-                                // 30秒重新連線一次
-                                if ((DateTime.Now - IOdisTime).Seconds >= 10)
-                                {
-                                    isConnect = false;
-                                }
-
-                                if (isConnect == false && bool_tcpclientconnect_Action == false)
-                                {
-                                    IOdisTime = DateTime.Now;
-                                    isConnect = true;
-                                    //重新建立連結
-                                    TcpClientConnect();
-                                }
-
-                                //161208 超出時間後再連一次。
-                                //byte_function_03_loop_index += 1;
-
-                                //當10次沒有連結的時候，重新連線一次。
-                                //if (byte_function_03_loop_index > 5)
+                                //if (isConnect == false)
                                 //{
+                                //    IOdisTime = DateTime.Now;
+                                //    isConnect = true;
                                 //    //重新建立連結
-                                //    TcpClientConnect();
-
-                                //    byte_function_03_loop_index = 0;
-
+                                //    new Thread(TcpClientConnect).Start();
                                 //}
+                                #endregion
                             }
-                        }
-                        catch (Exception ex)
-                        {
-                            MPU.WriteErrorCode("", "MesNetSiteRunning" + ex.Message);
-                            if (ex.Source != null)
+
+
+                            boolMESnetISrun = false;
+
+                            if (bool_AutoRun && MPU.Ethernet)
                             {
-                                Console.WriteLine("M0192:Exception source: {0}", ex.Source + ":" + ex.Message);
+                                if (!string.IsNullOrEmpty(MPU.dic_ReceiveMessage[int_ThreadNum + index]))
+                                {
+                                    // 如果狀態出現連線失敗或catch的錯誤訊息
+                                    if (MPU.dic_ReceiveMessage[int_ThreadNum + index].Contains(MPU.str_ErrorMessage[0]) 
+                                        || MPU.dic_ReceiveMessage[int_ThreadNum + index].Contains(MPU.str_ErrorMessage[1]))
+                                    {                                        
+                                        // IF判斷如果不存在斷線紀錄
+                                        sbSQL.AppendFormat(@"IF NOT EXISTS (SELECT * FROM tb_connectlog 
+                                                            WHERE DIP = '{0}' and 
+                                                            ADDRESS = {1} and 
+                                                            SID = '{2}' and 
+                                                            DVALUE = '{3}' and 
+                                                            CONTIME IS NULL)",
+                                                            String_DIP, String_Address, String_SID, String_NOTE);
+                                        sbSQL.AppendLine();
+
+                                        // 新增斷線紀錄
+                                        sbSQL.Append("  INSERT INTO ");
+                                        sbSQL.AppendFormat(@"tb_connectlog (DIP, ADDRESS, SID, DVALUE, DISTIME, SYSTIME) 
+                                                            VALUES ('{0}', {1}, '{2}', '{3}', '{4}', '{5}')",
+                                                            String_DIP, String_Address, String_SID, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                                        sbSQL.AppendLine();                                        
+                                    }
+
+                                    //  如果狀態不存在任何錯誤訊息，代表正常連線
+                                    if (!MPU.str_ErrorMessage.Contains(MPU.dic_ReceiveMessage[int_ThreadNum + index]))
+                                    {
+                                        // IF判斷如果存在斷線紀錄，且沒有重新連線紀錄
+                                        sbSQL.AppendFormat(@"IF EXISTS (SELECT * FROM tb_connectlog 
+                                                                WHERE DIP = '{0}' and 
+                                                                ADDRESS = {1} and 
+                                                                SID = '{2}' and 
+                                                                DVALUE = '{3}' and 
+                                                                CONTIME IS NULL)",
+                                                                String_DIP, String_Address, String_SID, String_NOTE);
+                                        sbSQL.AppendLine();
+
+                                        // 更新原本斷線紀錄，將連線時間更新上去
+                                        sbSQL.Append("  UPDATE ");
+                                        sbSQL.AppendFormat(@"tb_connectlog SET CONTIME = '{0}' 
+                                                                WHERE DIP = '{1}' and 
+                                                                ADDRESS = {2} and   
+                                                                SID = '{3}' and 
+                                                                DVALUE = '{4}' 
+                                                                and CONTIME IS NULL",
+                                                            DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_SID, String_NOTE);
+                                        sbSQL.AppendLine();
+                                    }
+                                }
                             }
+
+                            // 刷新設備狀態
+                            SetStatus();
+
+                            // 回寫資料庫
+                            sbSQL.AppendLine(String_SQLcommand);
+                            //if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                            //    MPU.ReadSQLToDT(sbSQL.ToString());
+
+                            //if (!string.IsNullOrWhiteSpace(String_SQLcommand_old))
+                            //    MPU.ReadSQLToDT_old(String_SQLcommand_old);
+
+
+                            //System.Threading.Thread.Sleep(int_ReaderSleep / dicDeviceList[String_Port].Count);
                         }
-                    
+                    }
 
-                        boolMESnetISrun = false;
-                        try
-                        {
-                            if (bool_AutoRun)
-                                Form1.form1.Invoke(new InvokeDelegate(UpdateValue));
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine("[MesNetSiteRunning UpdateValue] " + ex.Message);
-                        }
+                    #region 舊的
+                    // 如果資料庫斷線，就每30秒重新連線一次
+                    //if (MPU.Ethernet == false)
+                    //{
+                    //    if ((DateTime.Now - DBdisTime).Seconds >= 30)
+                    //    {
+                    //        isDBreConnect = true;
+                    //    }
 
-                        //UpdateValue();
-                    
+                    //    if (isDBreConnect == true)
+                    //    {
+                    //        DBdisTime = DateTime.Now;
+                    //        isDBreConnect = false;
+                    //        Check_Connection.CheckConnaction();
+                    //    }
+                    //}
+                    #endregion
 
-                        // 刷新設備狀態
-                        SetStatus();
+                    System.Threading.Thread.Sleep(int_ReaderSleep);
+                }
+                catch (Exception ex)
+                {
+                    MPU.WriteErrorCode("", "[MesNetSiteRunning] " + ex.Message);
+                    Console.WriteLine("[MesNetSiteRunning] " + ex.Message);
+                }
+            } 
+        }
 
-                        // 回寫資料庫
-                        if (String_SQLcommand != "")
-                        {
-                            MPU.ReadSQLToDT(String_SQLcommand);
-                        }
-
-                        //if (!(TcpClient_Reader != null && TcpClient_Reader.Connected))
+        private void Reconnect()
+        {
+            while (!bool_reconnect)
+            {
+                int_Reconnect++;
+                try
+                {
+                    if (int_Reconnect >= 10)
+                    {
+                        int_Reconnect = 0;
+                        //if (TcpClient_Reader != null)
                         //{
-                        //    SetStatus();
+                        //    TcpClient_Reader.Close();
+                        //    TcpClient_Reader = null;
                         //}
-                        System.Threading.Thread.Sleep(int_ReaderSleep);
+                        TcpClientConnect();
+                        bool_reconnect = true;
                     }
                 }
-
-                // 如果資料庫斷線，就每30秒重新連線一次
-                //if (MPU.Ethernet == false)
-                //{
-                //    if ((DateTime.Now - DBdisTime).Seconds >= 30)
-                //    {
-                //        isDBreConnect = true;
-                //    }
-
-                //    if (isDBreConnect == true)
-                //    {
-                //        DBdisTime = DateTime.Now;
-                //        isDBreConnect = false;
-                //        Check_Connection.CheckConnaction();
-                //    }
-                //}
-
-            } while (bool_AutoRun);
+                catch (Exception ex)
+                {
+                    bool_reconnect = false;
+                }
+                Thread.Sleep(1000);
+            }
         }
-        
+
+        bool bool_firstrun = true;
+        List<int> int_connecting = new List<int>();
         private static readonly object D_Lock = new object();
         private void SetStatus()
         {
             try
             {
-                if (Form1.form1.InvokeRequired)
+                if (String_ReData[index] != null)
                 {
-                    Form1.form1.Invoke(new Action(SetStatus), new object[] { });
-                }
-                else
-                {
-                    if (bool_AutoRun)
+                    if (String_ReData[index].Contains(MPU.str_ErrorMessage[3]) || String_ReData[index] == "")
                     {
-                        if (!(TcpClient_Reader != null && TcpClient_Reader.Connected))
+                        if (bool_firstrun)
                         {
-                            String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
-                            Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum + index].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
+                            for (int i = 0; i < Convert.ToInt32(dicDeviceList[String_Port].Count); i++)
+                            {
+                                int_connecting.Add(0);
+                            }
+                            bool_firstrun = false;
+                        }
+
+                        if (int_connecting[index] >= 10)
+                        {
+                            String_ReData[index] = MPU.str_ErrorMessage[1];
+                            int_connecting[index] = 0;
                         }
                         else
                         {
-                            Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum + index].DefaultCellStyle.BackColor = System.Drawing.Color.White;
+                            int_connecting[index]++;
                         }
-
-                        if (MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[0]) ||
-                            MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[1]) ||
-                            MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[2]) ||
-                            MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[3]))
-                        {
-                            Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum + index].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
-                        }
-
-                        if (MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[3]))
-                        {
-                            if (FirstRec[index])
-                            {
-                                FirstRec[index] = false;
-                                noDataTime[index] = DateTime.Now;
-                            }
-
-                            if ((DateTime.Now - noDataTime[index]).Seconds >= 30)
-                            {
-                                //MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"] = MPU.str_DeviceMessage[2];
-                                String_ReData[index] = MPU.str_DeviceMessage[2];
-                                noDataTime[index] = DateTime.Now;
-                                FirstRec[index] = true;
-                            }
-                        }
-
-                        MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"] = String_ReData[index];
-
-                        Application.DoEvents();
                     }
                 }
+                else
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                if (String_ReData[index] != null)
+                    MPU.dic_ReceiveMessage.AddOrUpdate(int_ThreadNum + index, String_ReData[index], (k, v) => String_ReData[index]);
+
+                #region 舊的
+                //if (Form1.form1.InvokeRequired)
+                //{
+                //    Form1.form1.Invoke(new Action(SetStatus), new object[] { });
+                //}
+                //else
+                //{
+                //    if (bool_AutoRun)
+                //    {
+                //        if (!(TcpClient_Reader != null && TcpClient_Reader.Connected))
+                //        {
+                //            String_ReData[intDiveceIndex] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_ErrorMessage[1];
+                //            Form1.form1.dgvLog[0].Rows[int_ThreadNum + intDiveceIndex].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
+                //        }
+                //        else
+                //        {
+                //            Form1.form1.dgvLog[0].Rows[int_ThreadNum + intDiveceIndex].DefaultCellStyle.BackColor = System.Drawing.Color.White;
+                //        }
+
+                //        if (MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.str_ErrorMessage[0]) ||
+                //            MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.str_ErrorMessage[1]) ||
+                //            MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.str_ErrorMessage[2]) ||
+                //            MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.str_ErrorMessage[3]))
+                //        {
+                //            Form1.form1.dgvLog[0].Rows[int_ThreadNum + intDiveceIndex].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
+                //        }
+
+                //        if (MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.str_ErrorMessage[3]))
+                //        {
+                //            if (FirstRec[intDiveceIndex])
+                //            {
+                //                FirstRec[intDiveceIndex] = false;
+                //                noDataTime[intDiveceIndex] = DateTime.Now;
+                //            }
+
+                //            if ((DateTime.Now - noDataTime[intDiveceIndex]).Seconds >= 30)
+                //            {
+                //                MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"] = MPU.str_ErrorMessage[2];
+                //                String_ReData[intDiveceIndex] = MPU.str_ErrorMessage[2];
+                //                noDataTime[intDiveceIndex] = DateTime.Now;
+                //                FirstRec[intDiveceIndex] = true;
+                //            }
+                //        }
+
+                //        MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"] = String_ReData[intDiveceIndex];
+
+                //        Application.DoEvents();
+                //    }
+                //}
+                #endregion
             }
             catch (Exception ex)
             {
-                throw ex;
+                MPU.WriteErrorCode("", "[MesNetSite SetStatus] " + ex.StackTrace);
+                Console.WriteLine("[MesNetSite SetStatus] " + ex.StackTrace);
             }
         }
 
-        private void UpdateValue()
+        #region 舊 - 更新連線狀態用法
+        private void UpdateDTToSQL()
         {
             if (bool_AutoRun)
             {
                 try
                 {
-                    string static_str = "";
-                    if (!string.IsNullOrEmpty(MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString()))
+                    if (!string.IsNullOrEmpty(MPU.dic_ReceiveMessage[int_ThreadNum + index]))
                     {
                         //Form1.form1.BeginInvoke(new InvokeDelegate(ChangeDatagridviewColor));
-
-                        static_str = String_DIP + " " + String_NOTE + MPU.str_DeviceMessage[1];
-                        if (MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[0]) || MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[1]))
+                        if (MPU.dic_ReceiveMessage[int_ThreadNum + index].Contains(MPU.str_ErrorMessage[0]) || MPU.dic_ReceiveMessage[int_ThreadNum + index].Contains(MPU.str_ErrorMessage[1]))
                         {
                             if (MPU.Ethernet == true)
                             {
@@ -461,7 +659,7 @@ namespace MES_N
                                 }
                             }
                         }
-                        else if (!MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[2]) && !MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[3]))
+                        else if (!MPU.dic_ReceiveMessage[int_ThreadNum + index].Contains(MPU.str_ErrorMessage[2]) && !MPU.dic_ReceiveMessage[int_ThreadNum + index].Contains(MPU.str_ErrorMessage[3]))
                         {
                             if (MPU.Ethernet == true)
                             {
@@ -496,12 +694,12 @@ namespace MES_N
                         //    {
                         //        MPU.dt_CurrentLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
 
-                        //        Form1.form1.Datagridview_Log[0].DataSource = MPU.dt_CurrentLog;
+                        //        Form1.form1.dgvLog[0].DataSource = MPU.dt_CurrentLog;
 
-                        //        Form1.form1.Datagridview_Log[0].Columns[0].Width = 100;
-                        //        Form1.form1.Datagridview_Log[0].Columns[1].Width = 60;
-                        //        Form1.form1.Datagridview_Log[0].Columns[2].Width = 859;
-                        //        Form1.form1.Datagridview_Log[0].Columns[3].Width = 224;
+                        //        Form1.form1.dgvLog[0].Columns[0].Width = 100;
+                        //        Form1.form1.dgvLog[0].Columns[1].Width = 60;
+                        //        Form1.form1.dgvLog[0].Columns[2].Width = 859;
+                        //        Form1.form1.dgvLog[0].Columns[3].Width = 224;
                         //    }
                         //}
 
@@ -516,13 +714,13 @@ namespace MES_N
                     //if (bool_isThreadSet)
                     //{
 
-                    //    if (MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.static_msg[1]))
+                    //    if (MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.static_msg[1]))
                     //    {
-                    //        Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
+                    //        Form1.form1.dgvLog[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
                     //    }
                     //    else
                     //    {
-                    //        Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.White;
+                    //        Form1.form1.dgvLog[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.White;
                     //    }
                     //    //Form1.form1.ChangeColor(int_ThreadNum);
                     //}
@@ -532,34 +730,34 @@ namespace MES_N
                 }
                 catch (Exception ex)
                 {
-                    MPU.WriteErrorCode("", "[MesNetSite UpdateValue] " + ex.Message);
+                    MPU.WriteErrorCode("", "[MesNetSite UpdateDTToSQL] " + ex.StackTrace);
                     Console.WriteLine(ex);
                 }
 
                 #region 舊的
                 //if (Form1.form1.InvokeRequired)
                 //{
-                //    Form1.form1.Invoke(new Action(UpdateValue), new object[] { });
+                //    Form1.form1.Invoke(new Action(UpdateDTToSQL), new object[] { });
                 //}
                 //else
                 //{
                 //    try
                 //    {
                 //        string static_str = "";
-                //        if (!string.IsNullOrEmpty(MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString()))
+                //        if (!string.IsNullOrEmpty(MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString()))
                 //        {
                 //            // 若同IP、同PORT時，只讓第一組IP去更新DataTable
                 //            if (String_ReData.Length == Convert.ToInt32(address_index.Split(',')[1]) && Convert.ToInt32(address_index.Split(',')[0]) == 1)
                 //            {
                 //                for (int i = 0; i < Convert.ToInt32(address_index.Split(',')[1]); i++)
                 //                {
-                //                    MPU.dt_MainTable.Rows[int_ThreadNum + i]["Static"] = String_ReData[index];
+                //                    MPU.dt_MainTable.Rows[int_ThreadNum + i]["Static"] = String_ReData[intDiveceIndex];
                 //                }
                 //            }
                 //            ChangeDatagridviewColor();
 
                 //           static_str = String_DIP + " " + String_NOTE + MPU.static_msg[1];
-                //            if (MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.static_msg[1]))
+                //            if (MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.static_msg[0]) || MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.static_msg[1]))
                 //            {
                 //                if (MPU.Ethernet == true)
                 //                {
@@ -577,7 +775,7 @@ namespace MES_N
                 //                    }
                 //                }
                 //            }
-                //            else if (!MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.static_msg[2]) && !MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.static_msg[3]))
+                //            else if (!MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.static_msg[2]) && !MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.static_msg[3]))
                 //            {
                 //                if (MPU.Ethernet == true)
                 //                {
@@ -612,12 +810,12 @@ namespace MES_N
                 //            //    {
                 //            //        MPU.dt_CurrentLog = ReadSQLToDT(string.Format("SELECT DIP IP, ADDRESS 站號, DVALUE Note, FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 FROM tb_connectlog WHERE CONTIME IS NULL AND CONCAT(TRIM(DIP),',',ADDRESS,',',TRIM(DVALUE)) IN ({0}) ORDER BY DISTIME DESC", concat_str));
 
-                //            //        Form1.form1.Datagridview_Log[0].DataSource = MPU.dt_CurrentLog;
+                //            //        Form1.form1.dgvLog[0].DataSource = MPU.dt_CurrentLog;
 
-                //            //        Form1.form1.Datagridview_Log[0].Columns[0].Width = 100;
-                //            //        Form1.form1.Datagridview_Log[0].Columns[1].Width = 60;
-                //            //        Form1.form1.Datagridview_Log[0].Columns[2].Width = 859;
-                //            //        Form1.form1.Datagridview_Log[0].Columns[3].Width = 224;
+                //            //        Form1.form1.dgvLog[0].Columns[0].Width = 100;
+                //            //        Form1.form1.dgvLog[0].Columns[1].Width = 60;
+                //            //        Form1.form1.dgvLog[0].Columns[2].Width = 859;
+                //            //        Form1.form1.dgvLog[0].Columns[3].Width = 224;
                 //            //    }
                 //            //}
 
@@ -628,18 +826,18 @@ namespace MES_N
                 //            #endregion                        
                 //        }
 
-                //        if (MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.static_msg[3]))
+                //        if (MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"].ToString().Contains(MPU.static_msg[3]))
                 //        {
-                //            //MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"] = String_ReData[index];
+                //            //MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"] = String_ReData[intDiveceIndex];
                 //            // 30秒內若撈不到I/O的資料就更改狀態
                 //            if ((DateTime.Now - noDataTime).Seconds >= 30)
                 //            {
-                //                MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"] = MPU.static_msg[2];
+                //                MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"] = MPU.static_msg[2];
                 //            }
                 //            else
                 //            {
-                //                MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"] = MPU.static_msg[3];
-                //                //MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"] = MPU.static_msg[3];
+                //                MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"] = MPU.static_msg[3];
+                //                //MPU.dt_MainTable.Rows[int_ThreadNum + intDiveceIndex]["Static"] = MPU.static_msg[3];
                 //            }
                 //        }
 
@@ -650,7 +848,7 @@ namespace MES_N
                 //    }
                 //    catch (Exception ex)
                 //    {
-                //        MPU.WriteErrorCode("", "MesNetSite UpdateValue : " + ex.Message);
+                //        MPU.WriteErrorCode("", "MesNetSite UpdateDTToSQL : " + ex.Message);
                 //        Console.WriteLine(ex);
                 //        throw ex;
                 //    }
@@ -658,17 +856,18 @@ namespace MES_N
                 #endregion
             }
         }
+        #endregion
 
-        #region 舊的寫法
+        #region 舊 - 更新DataGridView顏色
         private void ChangeDatagridviewColor()
         {
-            if (MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[0]) || MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_DeviceMessage[1]))
+            if (MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_ErrorMessage[0]) || MPU.dt_MainTable.Rows[int_ThreadNum + index]["Static"].ToString().Contains(MPU.str_ErrorMessage[1]))
             {
-                Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
+                Form1.form1.dgvLog[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
             }
             else
             {
-                Form1.form1.Datagridview_Log[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.White;
+                Form1.form1.dgvLog[0].Rows[int_ThreadNum].DefaultCellStyle.BackColor = System.Drawing.Color.White;
             }
         }
         #endregion
@@ -730,6 +929,8 @@ namespace MES_N
         #endregion
 
         public String String_SQLcommand = "";
+
+        public String String_SQLcommand_old = "";
 
         public String String_SQLcommand_values = "";
 
@@ -858,11 +1059,11 @@ namespace MES_N
                     {
                         if (String_Dline == "P2")
                         {
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ; ";
+                            String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ; ";
                         }
                         if (String_Dline == "P3")
                         {
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ;";
+                            String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ;";
                         }
 
                         //171119 
@@ -875,11 +1076,11 @@ namespace MES_N
 
                         if (String_Dline == "P2")
                         {
-                            String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "',(" + Str_SQL_sid_X_WLS + "),'" + light_Str + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ;";
+                            String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "',(" + Str_SQL_sid_X_WLS + "),'" + light_Str + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ;";
                         }
                         else if (String_Dline == "P3")
                         {
-                            String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "',(" + Str_SQL_sid_X_WLS + "),'" + light_Str + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ;";
+                            String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "',(" + Str_SQL_sid_X_WLS + "),'" + light_Str + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ;";
                         }
 
                         //
@@ -1096,11 +1297,11 @@ namespace MES_N
                             {
                                 if (str_T.Substring(2, 1) == "1")
                                 {
-                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','SWD001','4','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "'); ";
+                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','SWD001','4','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "'); ";
                                 }
                                 else
                                 {
-                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','SWD001','0','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "'); ";
+                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','SWD001','0','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "'); ";
                                 }
                             }
 
@@ -1169,11 +1370,11 @@ namespace MES_N
                             {
                                 if (String_Dline == "P2")
                                 {
-                                    String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                                    String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                                 }
                                 else if (String_Dline == "P3")
                                 {
-                                    String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                                    String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                                 }
                             }
                             else
@@ -1185,12 +1386,12 @@ namespace MES_N
                         {
                             if (String_Dline == "P2")
                             {
-                                String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                                String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
 
                             }
                             else if (String_Dline == "P3")
                             {
-                                String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                                String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                             }
                         }
                         else
@@ -1439,11 +1640,11 @@ namespace MES_N
 
                             if (String_SQLcommand == "" && str_DTS_temp[xx] != double_Mpa.ToString("F3") && String_Dline == "P2")
                             {
-                                String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                             }
                             if (String_SQLcommand == "" && str_DTS_temp[xx] != double_Mpa.ToString("F3") && String_Dline == "P3")
                             {
-                                String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                             }
 
                             if (String_SQLcommand != "" && str_DTS_temp[xx] != double_Mpa.ToString("F3") && xx != 0)
@@ -1655,11 +1856,11 @@ namespace MES_N
                                 //str_KPS_temp[xx] = (double_Mpa * 100).ToString("F1");
                                 if (String_Dline == "P2")
                                 {
-                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                                 }
                                 if (String_Dline == "P3")
                                 {
-                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                                 }
                             }
 
@@ -1812,11 +2013,11 @@ namespace MES_N
                 {
                     if (String_Dline == "P2")
                     {
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                     }
                     if (String_Dline == "P3")
                     {
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                     }
 
                     NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
@@ -2014,12 +2215,12 @@ namespace MES_N
 
                             if (String_SQLcommand == "" && String_Dline == "P2")
                             {
-                                String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                                 bool_add_Values = false;
                             }
                             if (String_SQLcommand == "" && String_Dline == "P3")
                             {
-                                String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                                 bool_add_Values = false;
                             }
 
@@ -2106,12 +2307,12 @@ namespace MES_N
                             //看那個製造部門 資料表
                             if (String_SQLcommand == "" && String_Dline == "P2")
                             {
-                                String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                String_SQLcommand = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                                 bool_add_Values = false;
                             }
                             if (String_SQLcommand == "" && String_Dline == "P3")
                             {
-                                String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                                 bool_add_Values = false;
                             }
 
@@ -2214,12 +2415,12 @@ namespace MES_N
 
                         if (String_SQLcommand == "" && String_Dline == "P2")
                         {
-                            String_SQLcommand = "; INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                            String_SQLcommand = "; INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                             bool_add_Values = false;
                         }
                         if (String_SQLcommand == "" && String_Dline == "P3")
                         {
-                            String_SQLcommand = "; INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                            String_SQLcommand = "; INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                             bool_add_Values = false;
                         }
 
@@ -2355,34 +2556,26 @@ namespace MES_N
 
         #region function_11_flow 流量計(8_3、8_4)
         //流量計
-        void function_11_flow()
+        void function_11_flow(int port)
         {
             try
             {
-                if (isSensor)
+                switch (port)
                 {
-                    switch (F11_index)
-                    {
-                        case 0:
-                            for (int j = 0; j < 8; j++)
-                            {
-                                Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight3_1[j], 16));
-                            }
-                            break;
-                        case 1:
-                            for (int j = 0; j < 8; j++)
-                            {
-                                Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight4_1[j], 16));
-                            }
-                            break;
-                        default:
-                            F11_index = 0;
-                            break;
-                    }
-                }
-                else
-                {
-                    Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F3");
+                    case 3:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight3_1[j], 16));
+                        }
+                        break;
+                    case 4:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight4_1[j], 16));
+                        }
+                        break;
+                    default:
+                        break;
                 }
 
                 NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
@@ -2395,48 +2588,46 @@ namespace MES_N
 
                 int int_Net_Available = TcpClient_Reader.Available;
 
-                NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
-
-                String str_hex = "";
-                double double_Mpa = 0;
-                if (int_Net_Available != 0)
+                if (int_Net_Available > 0)
                 {
-                    if (isSensor)
-                    {
-                        str_hex = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
 
-                        int[] eight = new int[str_hex.Length];
-                        for (int j = 0; j < eight.Length; j = j + 4)
-                        {
-                            eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
-                            //感測值結果
-                            double_Mpa = (((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) / 0.16) * (50 / 100);
-                        }
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
 
-                        double_Mpa = Math.Round(double_Mpa, 2);
-                    }
-                    else
+                    String str_hex = "";
+                    double double_Mpa = 0;
+                    str_hex = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
+
+                    int[] eight = new int[str_hex.Length];
+                    for (int j = 0; j < eight.Length; j = j + 4)
                     {
-                        double_Mpa = Convert.ToDouble(Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[F11_index + 1]);
+                        eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
+                        //感測值結果
+                        double_Mpa = (((Convert.ToDouble(eight[0]) * 20 / 4095 - 4) / 0.16) * 50) / 100;
+                        //double_Mpa = ((Convert.ToDouble(eight[0]) * 20 / 4095 - 4) / 0.16) * (50 / 100);
                     }
 
-                    String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 流量 (" + double_Mpa.ToString() + ")";
+                    double_Mpa = Math.Round(double_Mpa, 2);
 
-                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_ReData[index] = "流量 (" + double_Mpa.ToString() + ")";
+
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                 }
                 else
                 {
-                    String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
                     String_SQLcommand = "";
+                    String_SQLcommand_old = "";
                 }
             }
             catch (Exception EX)
             {
                 if (EX.Source != null)
                 {
-                    String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
 
                     String_SQLcommand = "";
+                    String_SQLcommand_old = "";
 
                     Console.WriteLine("M0312:Exception source: {0}", EX.Source);
                 }
@@ -2458,24 +2649,24 @@ namespace MES_N
                 double double_Mpa_1 = 0;
                 double double_Mpa_2 = 0;
 
-                if (isSensor)
+                //紅燈
+                string str_T_1 = "";
+                for (int j = 0; j < 8; j++)
                 {
-                    //紅燈
-                    string str_T_1 = "";
-                    for (int j = 0; j < 8; j++)
-                    {
-                        Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light1_1[j], 16));
-                    }
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                    Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light1_1[j], 16));
+                }
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
 
-                    for (int j = 0; j <= 50; j++)
-                    {
-                        System.Threading.Thread.Sleep(10);
-                        System.Windows.Forms.Application.DoEvents();
-                    }
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+                    System.Windows.Forms.Application.DoEvents();
+                }
 
-                    int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = TcpClient_Reader.Available;
 
+                if (int_Net_Available > 0)
+                {
                     NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
 
                     String str_hex_1 = "";
@@ -2522,88 +2713,57 @@ namespace MES_N
                         double_Mpa_2 = eight2[0];
                     }
 
-
+                    string str_light = "";
                     if (double_Mpa_1 > 20000)
                     {
                         //紅燈(停止中)
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 紅燈";
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "1000" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_ReData[index] = "紅燈";
+                        str_light = "1000";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                     }
                     else if (double_Mpa_2 > 20000)
                     {
                         //綠燈(運行中)
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 綠燈";
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "0100" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_ReData[index] = "綠燈";
+                        str_light = "0100";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                     }
-                    else if (double_Mpa_1 < 20000 || (double_Mpa_2 < 20000))
+                    else if ((double_Mpa_1 < 20000 && double_Mpa_2 < 20000) && (double_Mpa_1 > 0 && double_Mpa_2 > 0))
                     {
                         //黃燈(暫停中)
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 黃燈";
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "0010" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_ReData[index] = "黃燈";
+                        str_light = "0010";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                     }
                     else
                     {
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
-                        String_SQLcommand = "";
+                        //黃燈(暫停中)
+                        String_ReData[index] = "黃燈";
+                        str_light = "0010";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "";
                     }
                 }
                 else
                 {
-                    Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F1");
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
-
-                    for (int j = 0; j <= 50; j++)
-                    {
-                        System.Threading.Thread.Sleep(10);
-                        System.Windows.Forms.Application.DoEvents();
-                    }
-
-                    int_Net_Available = TcpClient_Reader.Available;
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
-                    if (int_Net_Available != 0)
-                    {
-                        string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
-
-                        if (temp == "Green")
-                        {
-                            //綠燈(運行中)
-                            String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 綠燈";
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "0100" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
-                        else if (temp == "Yellow")
-                        {
-                            //黃燈(暫停中)
-                            String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 黃燈";
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "0010" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
-                        else if (temp == "Red")
-                        {
-                            //紅燈(停止中)
-                            String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 紅燈";
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "1000" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
-                        else
-                        {
-                            String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
-                            String_SQLcommand = "";
-                        }
-                    }
-                    else
-                    {
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
-                        String_SQLcommand = "";
-                    }
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
                 }
             }
             catch (Exception EX)
             {
                 if (EX.Source != null)
                 {
-                    String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
 
                     String_SQLcommand = "";
+                    String_SQLcommand_old = "";
 
-                    Console.WriteLine("Exception source: {0}", EX.Source);
+                    Console.WriteLine("Exception source: {0}", EX.Source + "," + EX.Message);
                 }
             }
         }
@@ -2614,23 +2774,15 @@ namespace MES_N
         {
             try
             {
-                if (isSensor)
+                String_SeData13[1] = "03 02 4C 00 04";
+                String_SeData13[1] = CRC16LH(GetModbusCommand(String_Address.ToString(), String_SeData13[1]));
+                Array.Resize(ref Byte_Command_Sent, String_SeData13[1].Split(' ').Length);
+                for (int j = 0; j <= String_SeData13[1].Split(' ').Length - 1; j++)
                 {
-                    String_SeData13[1] = "03 02 4C 00 04";
-                    String_SeData13[1] = CRC16LH(GetModbusCommand(String_Address.ToString(), String_SeData13[1]));
-                    Array.Resize(ref Byte_Command_Sent, String_SeData13[1].Split(' ').Length);
-                    for (int j = 0; j <= String_SeData13[1].Split(' ').Length - 1; j++)
-                    {
-                        Byte_Command_Sent[j] = Convert.ToByte(String_SeData13[1].Split(' ')[j], 16);
-                    }
+                    Byte_Command_Sent[j] = Convert.ToByte(String_SeData13[1].Split(' ')[j], 16);
+                }
 
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData13[1].Split(' ').Length);
-                }
-                else
-                {
-                    Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F5");
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
-                }
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData13[1].Split(' ').Length);
 
 
                 for (int j = 0; j <= 50; j++)
@@ -2641,10 +2793,11 @@ namespace MES_N
                 }
 
                 int int_Net_Available = TcpClient_Reader.Available;
-                NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
 
-                if (isSensor)
+                if (int_Net_Available > 0)
                 {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
                     if (int_Net_Available == 14)
                     {
                         string str_1 = Convert.ToInt32(String.Format("{0:X2}", Byte_Command_Re[5]), 16).ToString();
@@ -2676,45 +2829,34 @@ namespace MES_N
                         str_3 = str_3.Replace("88", "N/A");
                         str_4 = str_4.Replace("88", "N/A");
                         //Console.WriteLine(String_ReData);
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... " + str_1 + " : " + str_2 + " : " + str_3 + " : " + str_4;
+                        String_ReData[index] = str_1 + " : " + str_2 + " : " + str_3 + " : " + str_4;
 
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + String_ReData[index].Split('.')[3].Trim() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + String_ReData[index].Trim() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                     }
                     else
                     {
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
+
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
                     }
                 }
                 else
                 {
-                    if (int_Net_Available != 0)
-                    {
-                        string[] temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',');
-                        if (temp[1] != "NA")
-                        {
-                            temp[1] = temp[1].TrimStart('0');
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
 
-                            String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 溫度 (" + temp[1] + ")";
-
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp[1] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
-                    }
-                    else
-                    {
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
-                        String_SQLcommand = "";
-                    }
-
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
                 }
-
             }
             catch (Exception EX)
             {
                 if (EX.Source != null)
                 {
-                    String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
 
                     String_SQLcommand = "";
+                    String_SQLcommand_old = "";
 
                     Console.WriteLine("M0312:Exception source: {0}", EX.Source);
                 }
@@ -2813,11 +2955,11 @@ namespace MES_N
                             {
                                 if (str_T.Substring(2, 1) == "1")
                                 {
-                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','SWD001','4','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "'); ";
+                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','SWD001','4','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "'); ";
                                 }
                                 else
                                 {
-                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','SWD001','0','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "'); ";
+                                    String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','SWD001','0','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "'); ";
                                 }
                             }
 
@@ -2874,7 +3016,7 @@ namespace MES_N
                         //燈號結果處理完畢
                         str_ttt = str_T;
 
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + "..." + int_Net_Available + "@" + str_T + ":" + String_Sclass;
+                        String_ReData[index] = int_Net_Available + "@" + str_T + ":" + String_Sclass;
 
                         //有資料時再處理
                         if (str_T != "" && String_SID != "WLS002")
@@ -2886,11 +3028,11 @@ namespace MES_N
                             {
                                 if (String_Dline == "P2")
                                 {
-                                    String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                                    String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                                 }
                                 else if (String_Dline == "P3")
                                 {
-                                    String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                                    String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                                 }
                             }
                             else
@@ -2902,12 +3044,12 @@ namespace MES_N
                         {
                             if (String_Dline == "P2")
                             {
-                                String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                                String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
 
                             }
                             else if (String_Dline == "P3")
                             {
-                                String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                                String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                             }
                         }
                         else
@@ -2949,7 +3091,7 @@ namespace MES_N
                     {
                         byte_function_03_loop_index += 1;
 
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + "...<468>" + int_Net_Available + "@" + str_ttt + "，未解碼次數(" + byte_function_03_loop_index + "):" + String_Sclass;
+                        String_ReData[index] = "<468>" + int_Net_Available + "@" + str_ttt + "，未解碼次數(" + byte_function_03_loop_index + "):" + String_Sclass;
 
                         //當燈號解析超出10次沒有資料的時候，重新連線一次。
                         if (byte_function_03_loop_index > 50)
@@ -2991,7 +3133,7 @@ namespace MES_N
             {
                 if (EX.Source != null)
                 {
-                    String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + "...[" + byte_function_03_loop_index + "]Ex:" + EX.Source + EX.Message;
+                    String_ReData[index] = "[" + byte_function_03_loop_index + "]Ex:" + EX.Source + EX.Message;
 
                     Console.WriteLine("M0516:燈號異常:" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss[{0}]"), EX.Source + EX.Message);
 
@@ -3002,49 +3144,40 @@ namespace MES_N
         #endregion
 
         #region function_15 正壓、負壓(8_1、8_2、8_5、8_6)
-        void function_15()
+        void function_15(int port)
         {
             try
             {
-                if (isSensor)
+                switch (port)
                 {
-                    switch (F15_index)
-                    {
-                        case 0:
-                            for (int j = 0; j < 8; j++)
-                            {
-                                Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight1_1[j], 16));
-                            }
-                            break;
-                        case 1:
-                            for (int j = 0; j < 8; j++)
-                            {
-                                Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight2_1[j], 16));
-                            }
-                            break;
-                        case 2:
-                            for (int j = 0; j < 8; j++)
-                            {
-                                Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight5_1[j], 16));
-                            }
-                            break;
-                        case 3:
-                            for (int j = 0; j < 8; j++)
-                            {
-                                Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight6_1[j], 16));
-                            }
-                            break;
-                        default:
-                            F15_index = 0;
-                            break;
-                    }
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                    case 1:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight1_1[j], 16));
+                        }
+                        break;
+                    case 2:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight2_1[j], 16));
+                        }
+                        break;
+                    case 5:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight5_1[j], 16));
+                        }
+                        break;
+                    case 6:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight6_1[j], 16));
+                        }
+                        break;
+                    default:
+                        break;
                 }
-                else
-                {
-                    Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F2");
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
-                }
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
 
 
                 for (int j = 0; j <= 50; j++)
@@ -3055,10 +3188,11 @@ namespace MES_N
                 }
 
                 int int_Net_Available = TcpClient_Reader.Available;
-                NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
 
-                if (isSensor)
+                if (int_Net_Available > 0)
                 {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
                     String str_hex = "";
                     double double_Mpa = 0;
 
@@ -3072,7 +3206,7 @@ namespace MES_N
                         {
                             eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
                             //感測值結果
-                            if (F15_index == 0 || F15_index == 2)
+                            if (F15_port != 2)
                                 double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) / 16;
                             else
                                 double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) * 101 / (-16);
@@ -3080,78 +3214,690 @@ namespace MES_N
 
                         double_Mpa = Math.Round(double_Mpa, 2);
 
-                        if (F15_index == 0 || F15_index == 2)
+                        if (double_Mpa > 0)
                         {
-                            if (double_Mpa > 0)
-                            {
-                                String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 正壓 (" + double_Mpa.ToString() + ")";
-                                String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                            }
-                            else if (double_Mpa < 0)
-                            {
-                                String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 異常";
-                            }
-                            else
-                            {
-                                String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
-                            }
+                            String_ReData[index] = "正壓 (" + double_Mpa.ToString() + ")";
+                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        }
+                        else if (double_Mpa < 0)
+                        {
+                            String_ReData[index] = "負壓 (" + double_Mpa.ToString() + ")";
+                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                         }
                         else
                         {
-                            if (double_Mpa < 0)
-                            {
-                                String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 負壓 (" + double_Mpa.ToString() + ")";
-                                String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                            }
-                            else if (double_Mpa < 0)
-                            {
-                                String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 異常";
-                                String_SQLcommand = "";
-                            }
-                            else
-                            {
-                                String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
-                                String_SQLcommand = "";
-                            }
+                            String_ReData[index] = "(" + double_Mpa.ToString() + ")";
+                            String_SQLcommand = "";
+                            String_SQLcommand_old = "";
                         }
                     }
                     else
                     {
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
                         String_SQLcommand = "";
+                        String_SQLcommand_old = "";
                     }
                 }
                 else
                 {
-                    if (int_Net_Available != 0)
-                    {
-                        string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[F15_index + 1];
-                        if (temp != "NA")
-                        {
-                            if (Convert.ToDouble(temp) > 0)
-                                String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 正壓 (" + temp + ")";
-                            else
-                                String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " ... 負壓 (" + temp + ")";
-
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
-                        else
-                            String_SQLcommand = "";
-                    }
-                    else
-                    {
-                        String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
-                        String_SQLcommand = "";
-                    }
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
                 }
             }
             catch (Exception ex)
             {
                 if (ex.Source != null)
                 {
-                    String_ReData[index] = DateTime.Now.ToString("HH:mm:ss") + " " + MPU.str_DeviceMessage[1];
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
 
                     String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", ex.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_16_pc_light S1F1 燈號
+        void function_16_pc_light()
+        {
+            try
+            {
+                int int_Net_Available = 0;
+
+                Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F1");
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int_Net_Available = TcpClient_Reader.Available;
+                if (int_Net_Available > 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
+                    string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
+
+                    if (temp == "Green")
+                    {
+                        //綠燈(運行中)
+                        String_ReData[index] = "綠燈";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "0100" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "0100" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else if (temp == "Yellow")
+                    {
+                        //黃燈(暫停中)
+                        String_ReData[index] = "黃燈";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "0010" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "0010" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else if (temp == "Red")
+                    {
+                        //紅燈(停止中)
+                        String_ReData[index] = "紅燈";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "1000" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + "1000" + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else
+                    {
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("Exception source: {0}", EX.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_17_pc_pressure S1F2 氣壓
+        void function_17_pc_pressure()
+        {
+            try
+            {
+                Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F2");
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+
+                if (int_Net_Available != 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
+                    string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[F15_port + 1];
+                    if (temp != "NA")
+                    {
+                        if (Convert.ToDouble(temp) > 0)
+                            String_ReData[index] = "正壓 (" + temp + ")";
+                        else
+                            String_ReData[index] = "負壓 (" + temp + ")";
+
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else
+                    {
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                if (ex.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", ex.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_18_pc_flow S1F3 流量
+        void function_18_pc_flow()
+        {
+            try
+            {
+                Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F3");
+
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+                if (int_Net_Available != 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
+                    double double_Mpa = 0;
+
+                    double_Mpa = Convert.ToDouble(Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[F11_port + 1]);
+
+                    String_ReData[index] = "流量 (" + double_Mpa.ToString() + ")";
+
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", EX.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_19_pc_temperature S1F4 溫度
+        void function_19_pc_temperature()
+        {
+            try
+            {
+                Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F4");
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+                if (int_Net_Available != 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
+
+                    temp = temp.Replace("NA", "0");
+
+                    String_ReData[index] = "溫度 (" + temp + ")";
+
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", EX.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_20_pc_resistance S1F5 種晶吸嘴阻值
+        void function_20_pc_resistance()
+        {
+            try
+            {
+                Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F5");
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+
+                if (int_Net_Available > 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
+
+                    temp = temp.Replace("NA", "0");
+
+                    String_ReData[index] = "種晶吸嘴阻值 (" + temp + ")";
+
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", EX.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_21_pc_H_Judge S1F6 H-Judge讀值
+        void function_21_pc_H_Judge()
+        {
+            try
+            {
+                Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F6");
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+
+                if (int_Net_Available != 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
+
+                    temp = temp.Replace("NA", "0");
+
+                    String_ReData[index] = "H-Judge讀值 (" + temp + ")";
+
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", EX.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_22_pc_shoucut S1F7 螢幕辨識參數(Temperature, Power, force, Time)
+        void function_22_pc_shoucut()
+        {
+            try
+            {
+                Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F7");
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+                NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
+                if (int_Net_Available != 0)
+                {
+                    string[] temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',');
+                    if (temp[1] != "NA")
+                    {
+                        temp[1] = temp[1].TrimStart('0');
+
+                        String_ReData[index] = "溫度 (" + temp[1] + ")";
+
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp[1] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp[1] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", EX.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_23_brainchild 溫度
+        void function_23_brainchild()
+        {
+            try
+            {
+                String_SeData13[1] = "03 03 00 80 00 01 84 00";
+                for (int j = 0; j <= String_SeData13[1].Split(' ').Length - 1; j++)
+                {
+                    Byte_Command_Sent[j] = Convert.ToByte(String_SeData13[1].Split(' ')[j], 16);
+                }
+
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData13[1].Split(' ').Length);
+
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+
+                if (int_Net_Available > 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    double SH = 4553.6, SL = -1999.9;   
+                    double temp;
+                    string hex = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
+                    temp = (((SH - SL) / 65535) * Convert.ToInt32(hex, 16)) + SL;
+                    if (temp > 0)
+                    {
+                        String_ReData[index] = "溫度(" + Math.Round(temp, 0).ToString() + ")";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + String_ReData[index].Trim() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + String_ReData[index].Trim() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else
+                    {
+                        String_ReData[index] = "異常";
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
+
+                    
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", EX.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_24_pc_NMPA_NMPB S1F8 舉離機(NMPA, NMPB)
+        void function_24_pc_NMPA_NMPB()
+        {
+            try
+            {
+                int int_Net_Available = 0;
+
+                Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F8");
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int_Net_Available = TcpClient_Reader.Available;
+                if (int_Net_Available > 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
+                    string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';');
+
+                    if (!string.IsNullOrWhiteSpace(temp))
+                    {
+                        //綠燈(運行中)
+                        String_ReData[index] = "NMPA, NMPB (" + temp + ")";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else
+                    {
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("Exception source: {0}", EX.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_25 混合壓(8_1、8_5)
+        void function_25(int port)
+        {
+            try
+            {
+                switch (port)
+                {
+                    case 1:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight1_1[j], 16));
+                        }
+                        break;
+                    case 2:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight2_1[j], 16));
+                        }
+                        break;
+                    case 5:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight5_1[j], 16));
+                        }
+                        break;
+                    case 6:
+                        for (int j = 0; j < 8; j++)
+                        {
+                            Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight6_1[j], 16));
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+
+                if (int_Net_Available > 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
+                    String str_hex = "";
+                    double double_Mpa = 0;
+
+                    str_hex = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
+
+                    int[] eight = new int[str_hex.Length];
+
+                    if (int_Net_Available != 0)
+                    {
+                        for (int j = 0; j < eight.Length; j = j + 4)
+                        {
+                            eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
+                            //感測值結果
+                            if (F15_port != 2)
+                                double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) / 16;
+                            else
+                                double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) * 101 / (-16);
+                        }
+
+                        double_Mpa = Math.Round(double_Mpa, 2);
+
+                        if (double_Mpa > 0)
+                        {
+                            String_ReData[index] = "正壓 (" + double_Mpa.ToString() + ")";
+                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        }
+                        else if (double_Mpa < 0)
+                        {
+                            String_ReData[index] = "負壓 (" + double_Mpa.ToString() + ")";
+                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        }
+                        else
+                        {
+                            String_ReData[index] = "(" + double_Mpa.ToString() + ")";
+                            String_SQLcommand = "";
+                            String_SQLcommand_old = "";
+                        }
+                    }
+                    else
+                    {
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                if (ex.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
 
                     Console.WriteLine("M0312:Exception source: {0}", ex.Source);
                 }

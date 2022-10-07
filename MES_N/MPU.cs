@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
@@ -27,13 +28,21 @@ namespace MES_N
 
         public static Boolean isStatusChange = false;
 
+        public static BindingSource bs_MainTable = new BindingSource();
+
+        public static BindingSource bs_CurrentLog = new BindingSource();
+
+        public static BindingSource bs_HistoryLog = new BindingSource();
+
         public static DataTable dt_MainTable = new DataTable();
 
         public static DataTable dt_CurrentLog = new DataTable();
 
         public static DataTable dt_HistoryLog = new DataTable();
 
-        public static String[] str_DeviceMessage = new string[] { "Ex", "網路連線失敗", "設備查無資料" ,"連線中..."};
+        public static ConcurrentDictionary<int, string> dic_ReceiveMessage = new ConcurrentDictionary<int, string>();
+
+        public static String[] str_ErrorMessage = new string[] { "Ex", "網路連線失敗", "設備查無資料" ,"連線中", "Sclass設定錯誤", "無資料"};
 
         public static String str_Barcode = "";
 
@@ -43,10 +52,13 @@ namespace MES_N
 
         public static Boolean Ethernet = false;
 
-        public static String conStr = "server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
+        public static String conStr = "server=192.168.1.58;Initial Catalog=dbMES_new;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
+        public static String conStr_old = "server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
 
         //public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection("server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!");
         public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection(conStr);
+        public static System.Data.SqlClient.SqlConnection conn_old = new System.Data.SqlClient.SqlConnection(conStr_old);
+
 
         #region 讀取SQL資料庫
         /// <summary>
@@ -61,6 +73,35 @@ namespace MES_N
                 if (Check_Connection.CheckConnaction())
                 {
                     using (SqlConnection conn = new SqlConnection(conStr))
+                    {
+                        SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        SqlDataAdapter adapter = new SqlDataAdapter(cmd);
+                        adapter.Fill(dtSource);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MPU.Ethernet = false;
+                throw ex;
+            }
+            return dtSource;
+        }
+        #endregion
+
+        #region 讀取SQL資料庫_old
+        /// <summary>
+        /// 讀取SQL資料庫(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        public static DataTable ReadSQLToDT_old(string pSQL)
+        {
+            DataTable dtSource = new DataTable();
+            try
+            {
+                if (Check_Connection.CheckConnaction())
+                {
+                    using (SqlConnection conn = new SqlConnection(conStr_old))
                     {
                         SqlCommand cmd = new SqlCommand(pSQL, conn);
                         SqlDataAdapter adapter = new SqlDataAdapter(cmd);
