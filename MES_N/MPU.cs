@@ -59,13 +59,43 @@ namespace MES_N
         public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection(conStr);
         public static System.Data.SqlClient.SqlConnection conn_old = new System.Data.SqlClient.SqlConnection(conStr_old);
 
-
-        #region 讀取SQL資料庫
+        #region 讀取SQL
         /// <summary>
-        /// 讀取SQL資料庫(請確認SQL指令是否正確)
+        /// 讀取SQL(請確認SQL指令是否正確)
         /// </summary>
         /// <param name="pSQL">SQL指令</param>
-        public static DataTable ReadSQLToDT(string pSQL)
+        public static void ReadSQL(string pSQL)
+        {
+            try
+            {
+                if (Check_Connection.CheckConnaction())
+                {
+                    using (SqlConnection conn = new SqlConnection(conStr))
+                    {
+                        conn.Open();
+                        SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        cmd.CommandTimeout = 3;
+                        cmd.ExecuteNonQuery();
+                        cmd.Cancel();
+                        conn.Close();
+                        MPU.Ethernet = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MPU.Ethernet = false;
+                throw ex;
+            }
+        }
+        #endregion
+
+        #region 讀取SQL回傳DataTable
+        /// <summary>
+        /// 讀取SQL回傳DataTable(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        public static DataTable ReadSQLToDT(string pSQL, int timeout = 3)
         {
             DataTable dtSource = new DataTable();
             try
@@ -74,9 +104,14 @@ namespace MES_N
                 {
                     using (SqlConnection conn = new SqlConnection(conStr))
                     {
+                        conn.Open();
                         SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        cmd.CommandTimeout = timeout;
                         SqlDataAdapter adapter = new SqlDataAdapter(cmd);
                         adapter.Fill(dtSource);
+                        cmd.Cancel();
+                        conn.Close();
+                        MPU.Ethernet = true;
                     }
                 }
             }
@@ -89,9 +124,40 @@ namespace MES_N
         }
         #endregion
 
-        #region 讀取SQL資料庫_old
+        #region 讀取SQL_old
         /// <summary>
-        /// 讀取SQL資料庫(請確認SQL指令是否正確)
+        /// 讀取SQL(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        public static void ReadSQL_old(string pSQL)
+        {
+            try
+            {
+                if (Check_Connection.CheckConnaction())
+                {
+                    using (SqlConnection conn = new SqlConnection(conStr_old))
+                    {
+                        conn.Open();
+                        SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        cmd.CommandTimeout = 3;
+                        cmd.ExecuteNonQuery();
+                        cmd.Cancel();
+                        conn.Close();
+                        MPU.Ethernet = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MPU.Ethernet = false;
+                throw ex;
+            }
+        }
+        #endregion
+
+        #region 讀取SQL回傳DataTable_old
+        /// <summary>
+        /// 讀取SQL回傳DataTable(請確認SQL指令是否正確)
         /// </summary>
         /// <param name="pSQL">SQL指令</param>
         public static DataTable ReadSQLToDT_old(string pSQL)
@@ -103,9 +169,14 @@ namespace MES_N
                 {
                     using (SqlConnection conn = new SqlConnection(conStr_old))
                     {
+                        conn.Open();
                         SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        cmd.CommandTimeout = 3;
                         SqlDataAdapter adapter = new SqlDataAdapter(cmd);
                         adapter.Fill(dtSource);
+                        cmd.Cancel();
+                        conn.Close();
+                        MPU.Ethernet = true;
                     }
                 }
             }

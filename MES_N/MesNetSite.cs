@@ -5,6 +5,7 @@ using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -297,13 +298,19 @@ namespace MES_N
                                 }
                                 else
                                 {
-                                    //連結失敗
-                                    //SetStatus();
-                                    String_ReData[index] = MPU.str_ErrorMessage[1];
-                                    if (bool_reconnect)
+                                    switch (dicDeviceList[String_Port][i].Split('_')[0])
                                     {
-                                        bool_reconnect = false;
-                                        new Thread(Reconnect).Start();
+                                        case "26": //只PING設備IP，連線成功就回傳黃燈
+                                            function_26_PingIP();
+                                            break;
+                                        default: //TCPclient連線失敗
+                                            String_ReData[index] = MPU.str_ErrorMessage[1];
+                                            if (bool_reconnect)
+                                            {
+                                                bool_reconnect = false;
+                                                new Thread(Reconnect).Start();
+                                            }
+                                            break;
                                     }
 
                                     #region 舊的
@@ -470,11 +477,11 @@ namespace MES_N
 
                             // 回寫資料庫
                             sbSQL.AppendLine(String_SQLcommand);
-                            //if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
-                            //    MPU.ReadSQLToDT(sbSQL.ToString());
+                            if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                                MPU.ReadSQL(sbSQL.ToString());
 
-                            //if (!string.IsNullOrWhiteSpace(String_SQLcommand_old))
-                            //    MPU.ReadSQLToDT_old(String_SQLcommand_old);
+                            if (!string.IsNullOrWhiteSpace(String_SQLcommand_old))
+                                MPU.ReadSQL_old(String_SQLcommand_old);
 
 
                             //System.Threading.Thread.Sleep(int_ReaderSleep / dicDeviceList[String_Port].Count);
@@ -650,12 +657,12 @@ namespace MES_N
                                 {
                                     if (!string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
                                     {
-                                        MPU.ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+                                        MPU.ReadSQL(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
                                     }
                                 }
                                 else
                                 {
-                                    MPU.ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
+                                    MPU.ReadSQL(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, DISTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
                                 }
                             }
                         }
@@ -669,7 +676,7 @@ namespace MES_N
                                     if (string.IsNullOrEmpty(dt.Rows[0]["CONTIME"].ToString()))
                                     {
                                         //ReadSQLToDT(string.Format("INSERT INTO tb_connectlog (DIP, ADDRESS, DVALUE, CONTIME, SYSTIME) VALUES ('{0}', '{1}', '{2}', '{3}', '{4}')", String_DIP, String_Address, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")));
-                                        MPU.ReadSQLToDT(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
+                                        MPU.ReadSQL(string.Format("UPDATE tb_connectlog SET CONTIME = '{0}' WHERE DIP = '{1}' and ADDRESS = '{2}' and DVALUE = '{3}' and CONTIME IS NULL ", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_NOTE));
                                     }
                                 }
                             }
@@ -3200,42 +3207,33 @@ namespace MES_N
 
                     int[] eight = new int[str_hex.Length];
 
-                    if (int_Net_Available != 0)
+                    for (int j = 0; j < eight.Length; j = j + 4)
                     {
-                        for (int j = 0; j < eight.Length; j = j + 4)
-                        {
-                            eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
-                            //感測值結果
-                            if (F15_port != 2)
-                                double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) / 16;
-                            else
-                                double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) * 101 / (-16);
-                        }
-
-                        double_Mpa = Math.Round(double_Mpa, 2);
-
-                        if (double_Mpa > 0)
-                        {
-                            String_ReData[index] = "正壓 (" + double_Mpa.ToString() + ")";
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
-                        else if (double_Mpa < 0)
-                        {
-                            String_ReData[index] = "負壓 (" + double_Mpa.ToString() + ")";
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
+                        eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
+                        //感測值結果
+                        if (F15_port != 2)
+                            double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) / 16;
                         else
-                        {
-                            String_ReData[index] = "(" + double_Mpa.ToString() + ")";
-                            String_SQLcommand = "";
-                            String_SQLcommand_old = "";
-                        }
+                            double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) * 101 / (-16);
+                    }
+
+                    double_Mpa = Math.Round(double_Mpa, 2);
+
+                    if (double_Mpa > 0)
+                    {
+                        String_ReData[index] = "正壓 (" + double_Mpa.ToString() + ")";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else if (double_Mpa < 0)
+                    {
+                        String_ReData[index] = "負壓 (" + double_Mpa.ToString() + ")";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                     }
                     else
                     {
-                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_ReData[index] = "(" + double_Mpa.ToString() + ")";
                         String_SQLcommand = "";
                         String_SQLcommand_old = "";
                     }
@@ -3688,7 +3686,7 @@ namespace MES_N
                     double SH = 4553.6, SL = -1999.9;   
                     double temp;
                     string hex = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
-                    temp = (((SH - SL) / 65535) * Convert.ToInt32(hex, 16)) + SL;
+                    temp = (((SH - SL) / 65535) * Convert.ToInt32(hex, 16)) + SL - 1;
                     if (temp > 0)
                     {
                         String_ReData[index] = "溫度(" + Math.Round(temp, 0).ToString() + ")";
@@ -3843,42 +3841,31 @@ namespace MES_N
 
                     int[] eight = new int[str_hex.Length];
 
-                    if (int_Net_Available != 0)
+                    for (int j = 0; j < eight.Length; j = j + 4)
                     {
-                        for (int j = 0; j < eight.Length; j = j + 4)
-                        {
-                            eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
-                            //感測值結果
-                            if (F15_port != 2)
-                                double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) / 16;
-                            else
-                                double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) * 101 / (-16);
-                        }
+                        eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
+                        //感測值結果
+                        double mA = Convert.ToDouble(eight[0]) * 20 / 4095;
+                        double_Mpa = 0.00003 * Math.Pow(mA, 2) + 0.068 * mA - 0.3725;
+                    }
 
-                        double_Mpa = Math.Round(double_Mpa, 2);
+                    double_Mpa = Math.Round(double_Mpa, 2);
 
-                        if (double_Mpa > 0)
-                        {
-                            String_ReData[index] = "正壓 (" + double_Mpa.ToString() + ")";
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
-                        else if (double_Mpa < 0)
-                        {
-                            String_ReData[index] = "負壓 (" + double_Mpa.ToString() + ")";
-                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        }
-                        else
-                        {
-                            String_ReData[index] = "(" + double_Mpa.ToString() + ")";
-                            String_SQLcommand = "";
-                            String_SQLcommand_old = "";
-                        }
+                    if (double_Mpa > 0)
+                    {
+                        String_ReData[index] = "正壓 (" + double_Mpa.ToString() + ")";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else if (double_Mpa < 0)
+                    {
+                        String_ReData[index] = "負壓 (" + double_Mpa.ToString() + ")";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                     }
                     else
                     {
-                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_ReData[index] = "(" + double_Mpa.ToString() + ")";
                         String_SQLcommand = "";
                         String_SQLcommand_old = "";
                     }
@@ -3886,6 +3873,47 @@ namespace MES_N
                 else
                 {
                     String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                if (ex.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", ex.Source);
+                }
+            }
+        }
+        #endregion
+
+        #region function_26_PingIP 只PING設備IP，連線成功就回傳黃燈
+        void function_26_PingIP()
+        {
+
+            Ping ping = new Ping();
+            try
+            {
+                //PING設備IP
+                PingReply reply = ping.Send(String_DIP, 100);
+                if (reply.Status == IPStatus.Success)
+                {
+                    //連線成功則顯示黃燈
+                    String_ReData[index] = "黃燈";
+                    string str_light = "0010";
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                }
+                else
+                {
+                    //連線失敗則顯示錯誤訊息
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
                     String_SQLcommand = "";
                     String_SQLcommand_old = "";
                 }

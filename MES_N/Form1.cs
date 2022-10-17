@@ -175,16 +175,16 @@ namespace MES_N
                         + ",";
                 }
                 str_SQL = str_SQL.Trim(',');
-                
-                MPU.dt_CurrentLog = MPU.ReadSQLToDT(string.Format(@"
-                    SELECT DIP IP, 
-                        SID Sclass, 
-                        DVALUE Note, 
-                        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 
-                    FROM tb_connectlog 
-                    WHERE CONTIME IS NULL AND 
-                        CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
-                    ORDER BY DISTIME DESC", str_SQL));
+
+                //MPU.dt_CurrentLog = MPU.ReadSQLToDT(string.Format(@"
+                //    SELECT DIP IP, 
+                //        SID Sclass, 
+                //        DVALUE Note, 
+                //        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 
+                //    FROM tb_connectlog 
+                //    WHERE CONTIME IS NULL AND 
+                //        CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
+                //    ORDER BY DISTIME DESC", str_SQL));
 
                 if (MPU.Ethernet == true)
                 {
@@ -207,21 +207,21 @@ namespace MES_N
 
                 str_SQL = str_SQL.Trim(',');
 
-                MPU.dt_HistoryLog = MPU.ReadSQLToDT(string.Format(@"
-                    SELECT TOP(50) 
-                        DIP IP, 
-                        SID Sclass, 
-                        DVALUE Note, 
-                        FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, 
-                        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, 
-                        CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'), 
-                        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, 
-                        CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'), 
-                        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort 
-                    FROM tb_connectlog 
-                    WHERE CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
-                    ORDER BY Sort DESC", str_SQL));
-                
+                //MPU.dt_HistoryLog = MPU.ReadSQLToDT(string.Format(@"
+                //    SELECT TOP(50) 
+                //        DIP IP, 
+                //        SID Sclass, 
+                //        DVALUE Note, 
+                //        FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, 
+                //        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, 
+                //        CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'), 
+                //        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, 
+                //        CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'), 
+                //        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort 
+                //    FROM tb_connectlog 
+                //    WHERE CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
+                //    ORDER BY Sort DESC", str_SQL));
+
                 if (MPU.Ethernet == true)
                 {
                     //MPU.bs_HistoryLog.DataSource = MPU.dt_HistoryLog;
@@ -263,6 +263,7 @@ namespace MES_N
             catch (Exception ex)
             {
                 MPU.WriteErrorCode("", "[SetDatatable] : " + ex.Message);
+
                 if (ex.Source != null)
 
                     Console.WriteLine("F0573:Exception source: {0}", ex.Source);
@@ -360,12 +361,13 @@ namespace MES_N
 
                 bool_isAutoRun = true;
 
-                SetHistoryLog();
+                //SetHistoryLog();
 
                 SetDatagridview();
 
                 bool_run = true;
                 tmrUpdateDT.Enabled = true;
+                tmrUpdateDT.Start();
 
                 Parallel.For(0, dicDeviceList.Values.SelectMany(t => t).Count(), (i, state) =>
                 {
@@ -419,21 +421,21 @@ namespace MES_N
                     dgvMainView.Columns[8].Width = 452;
                     dgvMainView.Columns[9].Width = 190;
 
-                    if (MPU.Ethernet == true)
-                    {
-                        dataGridView_CurrLog.Columns[0].Width = 100;
-                        dataGridView_CurrLog.Columns[1].Width = 70;
-                        dataGridView_CurrLog.Columns[2].Width = 857;
-                        dataGridView_CurrLog.Columns[3].Width = 223;
+                    //if (MPU.Ethernet == true)
+                    //{
+                    //    dataGridView_CurrLog.Columns[0].Width = 100;
+                    //    dataGridView_CurrLog.Columns[1].Width = 70;
+                    //    dataGridView_CurrLog.Columns[2].Width = 857;
+                    //    dataGridView_CurrLog.Columns[3].Width = 223;
 
-                        dataGridView_HistLog.Columns[0].Width = 100;
-                        dataGridView_HistLog.Columns[1].Width = 70;
-                        dataGridView_HistLog.Columns[2].Width = 857;
-                        dataGridView_HistLog.Columns[5].Width = 223;
-                        dataGridView_HistLog.Columns[3].Visible = false;
-                        dataGridView_HistLog.Columns[4].Visible = false;
-                        dataGridView_HistLog.Columns[6].Visible = false;
-                    }
+                    //    dataGridView_HistLog.Columns[0].Width = 100;
+                    //    dataGridView_HistLog.Columns[1].Width = 70;
+                    //    dataGridView_HistLog.Columns[2].Width = 857;
+                    //    dataGridView_HistLog.Columns[5].Width = 223;
+                    //    dataGridView_HistLog.Columns[3].Visible = false;
+                    //    dataGridView_HistLog.Columns[4].Visible = false;
+                    //    dataGridView_HistLog.Columns[6].Visible = false;
+                    //}
 
 
                     foreach (DataGridViewColumn column in dgvMainView.Columns)
@@ -533,7 +535,7 @@ namespace MES_N
                             FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort 
                         FROM tb_connectlog 
                         WHERE CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
-                        ORDER BY Sort DESC", str_SQL));
+                        ORDER BY Sort DESC", str_SQL), 15);
 
                     if (MPU.Ethernet == true)
                     {
@@ -589,15 +591,15 @@ namespace MES_N
 
 
 
-                        //dgvLog[1].Columns[0].Width = 100;
-                        //dgvLog[1].Columns[1].Width = 60;
-                        //dgvLog[1].Columns[2].Width = 860;
-                        ////dgvLog[1].Columns[3].Width = 150;
-                        ////dgvLog[1].Columns[4].Width = 150;
-                        //dgvLog[1].Columns[5].Width = 224;
-                        //dgvLog[1].Columns[3].Visible = false;
-                        //dgvLog[1].Columns[4].Visible = false;
-                        //dgvLog[1].Columns[6].Visible = false;
+
+
+                        dataGridView_HistLog.Columns[0].Width = 100;
+                        dataGridView_HistLog.Columns[1].Width = 70;
+                        dataGridView_HistLog.Columns[2].Width = 857;
+                        dataGridView_HistLog.Columns[5].Width = 223;
+                        dataGridView_HistLog.Columns[3].Visible = false;
+                        dataGridView_HistLog.Columns[4].Visible = false;
+                        dataGridView_HistLog.Columns[6].Visible = false;
                     }
                     for (int i = 0; i < MPU.dt_HistoryLog.Rows.Count; i++)
                     {
@@ -614,13 +616,12 @@ namespace MES_N
             }
             catch (Exception ex)
             {
-                MPU.WriteErrorCode("", "[SetHistoryLog] " + ex.StackTrace);
+                MPU.WriteErrorCode("", "[SetHistoryLog] " + ex.Message);
                 Console.WriteLine("[SetHistoryLog] " + ex.StackTrace);
             }
         }
 
-        Boolean canUpdateCurrLog = true;
-        Boolean FirstReConn = false;
+        Boolean isFirstReConnect = true;
         DateTime DBdisTime = DateTime.Now;
         Boolean isDBreConnect = true;
         Boolean bool_currentlog = false;
@@ -678,13 +679,13 @@ namespace MES_N
                                         CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
                                     ORDER BY DISTIME DESC", str_SQL));
 
-                                if (FirstReConn == true)
+                                if (isFirstReConnect == true)
                                 {
-                                    FirstReConn = false;
+                                    isFirstReConnect = false;
                                     dataGridView_CurrLog.DataSource = MPU.dt_CurrentLog;
                                     dataGridView_CurrLog.Columns[0].Width = 100;
-                                    dataGridView_CurrLog.Columns[1].Width = 60;
-                                    dataGridView_CurrLog.Columns[2].Width = 859;
+                                    dataGridView_CurrLog.Columns[1].Width = 70;
+                                    dataGridView_CurrLog.Columns[2].Width = 857;
                                     dataGridView_CurrLog.Columns[3].Width = 223;
                                 }
                                 //dgvLog[0].DataSource = MPU.dt_CurrentLog;
@@ -696,7 +697,7 @@ namespace MES_N
                             }
                             else
                             {
-                                FirstReConn = true;
+                                isFirstReConnect = true;
                             }
 
                             //Thread.Sleep(30000);
@@ -715,9 +716,7 @@ namespace MES_N
         }
 
         List<DataRow> list_dr = new List<DataRow>();
-        bool bool_firstadd = true;
-        bool bool_run = false;
-        int int_DRnum;
+        bool bool_run;
         string string_dno = "";
         private void tmrUpdateDT_Tick(object sender, EventArgs e)
         {
@@ -791,14 +790,13 @@ namespace MES_N
                         {
                             string_dno = DateTime.Now.ToString("yyyy-MM-dd");
 
-                            MPU.ReadSQLToDT(@"
+                            MPU.ReadSQL(@"
                                 INSERT INTO tb_dayno(DNO,SYSTIME,TYPE) VALUES( (SELECT MAX(DNO) FROM tb_recordslog),GETDATE(),'RE');
                                 INSERT INTO tb_dayno(DNO,SYSTIME,TYPE) VALUES( (SELECT MAX(DNO) FROM tb_P2recordslog),GETDATE(),'P2');
                                 INSERT INTO tb_dayno(DNO,SYSTIME,TYPE) VALUES( (SELECT MAX(DNO) FROM tb_P3recordslog),GETDATE(),'P3');");
                         }
 
                     }
-                    //dgvMainView.Refresh();
                     bool_run = true;
                 }
                 catch (Exception ex)
@@ -1188,6 +1186,7 @@ namespace MES_N
         {
             if (MessageBox.Show("程式即將關閉，是否繼續？", "確認", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
+                tmrUpdateDT.Stop();
                 tmrUpdateDT.Enabled = false;
                 for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
                 {
@@ -1215,11 +1214,7 @@ namespace MES_N
                         }
                     }
                 }
-
-
                 bool_isAutoRun = false;
-                MPU.conn.Close();
-
                 Environment.Exit(0);
             }
             else
