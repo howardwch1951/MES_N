@@ -5,7 +5,9 @@ using System.ComponentModel;
 using System.Data;
 using System.Data.SqlClient;
 using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +37,7 @@ namespace MES_N
 
         public List<DataGridView> dgvLog = new List<DataGridView>();
         private delegate void InvokeDelegate();
+        bool canInsertDayno;
         private void Form1_Load(object sender, EventArgs e)
         {
             this.SetStyle(
@@ -43,6 +46,16 @@ namespace MES_N
               ControlStyles.DoubleBuffer, true);
 
             this.Size = new Size(1290, 682);
+
+            if (MPU.GetFileData("./Config", "config.txt")[0] == "true")
+                canInsertDayno = true;
+            else
+                canInsertDayno = false;
+
+            DirectoryInfo info = new DirectoryInfo(System.Environment.CurrentDirectory);
+            string strFolderName = info.Name;//獲取當前路徑最後一級資料夾名稱
+            
+            this.Text += $" - {strFolderName}";
 
             dtpStart.CustomFormat = "yyyy 年 MM 月 dd 日　HH:mm:ss";
             dtpStart.Format = DateTimePickerFormat.Custom;
@@ -152,7 +165,7 @@ namespace MES_N
                     Datatable_showtxt.Rows[i]["Address"].ToString(),
                     Datatable_showtxt.Rows[i]["Portid"].ToString() ,
                     Datatable_showtxt.Rows[i]["Sclass"].ToString() ,
-                    Datatable_showtxt.Rows[i]["SID"].ToString().Replace('.',' ') ,
+                    Datatable_showtxt.Rows[i]["SID"].ToString() ,
                     Datatable_showtxt.Rows[i]["NOTE"].ToString() +  "_" +
                     Datatable_showtxt.Rows[i]["text"].ToString(), "連線中",
                     };
@@ -274,7 +287,8 @@ namespace MES_N
         MesNetSite[] MesNetSite_Sys = new MesNetSite[] { };
         System.Threading.Thread[] Thread_MesNetSite = new System.Threading.Thread[] { };
         int intThreadIndex = 0;
-        bool[] isThreadSetUp = new bool[] { };
+        List<bool> isThreadAlive = new List<bool>();
+        List<bool> isTcpConnect = new List<bool>();
         private void SetThread()
         {
             try
@@ -284,8 +298,6 @@ namespace MES_N
                 Array.Resize(ref MesNetSite_Sys, dicDeviceList.Values.SelectMany(t => t).Count());
 
                 Array.Resize(ref Thread_MesNetSite, dicDeviceList.Values.SelectMany(t => t).Count());
-
-                Array.Resize(ref isThreadSetUp, dicDeviceList.Values.SelectMany(t => t).Count());
 
                 for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
                 {
@@ -333,7 +345,7 @@ namespace MES_N
                         MesNetSite_Sys[n].bool_isThreadSet = true;
 
                         MesNetSite_Sys[n].TcpClientConnect();
-                        
+
                         //'宣告一個執行緒來處理 reader讀取 電子標籤的動作。
                         //Thread_MesNetSite[i] = new System.Threading.Thread(MesNetSite_Sys[i].MesNetSiteRunning);
                         //Thread_MesNetSite[i].IsBackground = true;
@@ -347,7 +359,8 @@ namespace MES_N
                         //});
 
                         //action[intThreadIndex] = ()=>MesNetSite_Sys[intThreadIndex].MesNetSiteRunning();
-
+                        isThreadAlive.Add(true);
+                        isTcpConnect.Add(true);
                         intThreadIndex++;
                     }
                 }
@@ -509,33 +522,48 @@ namespace MES_N
             {
                 if (MPU.Ethernet == true)
                 {
-                    string str_SQL = "";
-                    for (int i = 0; i < MPU.dt_MainTable.Rows.Count; i++)
-                    {
-                        str_SQL += "'" 
-                            + MPU.dt_MainTable.Rows[i]["DIP"].ToString() + "," 
-                            + MPU.dt_MainTable.Rows[i]["SID"].ToString() + "," 
-                            + MPU.dt_MainTable.Rows[i]["NOTE"].ToString() + "'" 
-                            + ",";
-                    }
+                    StringBuilder sbSQL = new StringBuilder();
 
-                    str_SQL = str_SQL.Trim(',');
+                    // 1.建立暫存表
+                    sbSQL.AppendFormat(@"create table #SIDtable
+                                        (
+                                            SID char(100)
+                                        )");
+                    sbSQL.AppendLine();
+
+                    // 2.將SID加入暫存表
+                    sbSQL.AppendLine("insert into #SIDtable (SID) values ");
+                    for (int j = 0; j < MPU.dt_MainTable.Rows.Count; j++)
+                    {
+                        if (j == (MPU.dt_MainTable.Rows.Count - 1))
+                            sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["SID"]}');");
+                        else
+                            sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["SID"]}'),");
+                    }
+                    sbSQL.AppendLine();
+
+                    // 3.將tb_connectlog與暫存表做inner join，篩選出需要的資料
+                    sbSQL.AppendFormat(@"SELECT 
+                                            DIP IP, 
+                                            tb_connectlog.SID, 
+                                            DVALUE Note, 
+                                            FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, 
+                                            FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, 
+                                            CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'), 
+                                        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, 
+                                            CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'), 
+                                            FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort 
+                                        FROM tb_connectlog
+                                        inner join #SIDtable on tb_connectlog.SID = #SIDtable.SID
+                                        order by SID asc");
+                    sbSQL.AppendLine();
+
+                    // 4.移除剛才建立的暫存表
+                    sbSQL.AppendLine("drop table #SIDtable;");
+
                     DataTable DataTable_HistLog = new DataTable();
                     DataTable_HistLog = null;
-                    DataTable_HistLog = MPU.ReadSQLToDT(string.Format(@"
-                        SELECT TOP(50) 
-                            DIP IP, 
-                            SID, 
-                            DVALUE Note, 
-                            FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, 
-                            FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, 
-                            CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'), 
-                            FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, 
-                            CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'), 
-                            FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort 
-                        FROM tb_connectlog 
-                        WHERE CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
-                        ORDER BY Sort DESC", str_SQL), 15);
+                    DataTable_HistLog = MPU.ReadSQLToDT(sbSQL.ToString());
 
                     if (MPU.Ethernet == true)
                     {
@@ -655,29 +683,43 @@ namespace MES_N
                         }
                         lock (D_Lock)
                         {
-                            string str_SQL = "";
+                            StringBuilder sbSQL = new StringBuilder();
+
+                            // 1.建立暫存表
+                            sbSQL.AppendFormat(@"create table #SIDtable
+					                            (
+						                            SID char(100)
+					                            )");
+                            sbSQL.AppendLine();
+
+                            // 2.將SID加入暫存表
+                            sbSQL.AppendLine("insert into #SIDtable (SID) values ");
                             for (int j = 0; j < MPU.dt_MainTable.Rows.Count; j++)
                             {
-                                str_SQL += "'" 
-                                    + MPU.dt_MainTable.Rows[j]["DIP"].ToString() + "," 
-                                    + MPU.dt_MainTable.Rows[j]["SID"].ToString() + "," 
-                                    + MPU.dt_MainTable.Rows[j]["NOTE"].ToString() + "'" 
-                                    + ",";
+                                if (j == (MPU.dt_MainTable.Rows.Count - 1))
+                                    sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["SID"]}');");
+                                else
+                                    sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["SID"]}'),");
                             }
-                            str_SQL = str_SQL.Trim(',');
-                            //MPU.dt_CurrentLog = null;
+                            sbSQL.AppendLine();
+
+                            // 3.將tb_connectlog與暫存表做inner join，篩選出需要的資料
+                            sbSQL.AppendFormat(@"select DIP IP, 
+                                                    tb_connectlog.SID Sclass, 
+                                                    DVALUE Note, 
+                                                    format ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 
+                                                from tb_connectlog 
+                                                inner join #SIDtable on tb_connectlog.SID = #SIDtable.SID
+                                                where CONTIME is null 
+                                                order by DISTIME desc");
+                            sbSQL.AppendLine();
+
+                            // 4.移除剛才建立的暫存表
+                            sbSQL.AppendLine("drop table #SIDtable;");
 
                             if (MPU.Ethernet == true)
                             {
-                                MPU.dt_CurrentLog = MPU.ReadSQLToDT(string.Format(@"
-                                    SELECT DIP IP, 
-                                        SID Sclass, 
-                                        DVALUE Note, 
-                                        FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間 
-                                    FROM tb_connectlog 
-                                    WHERE CONTIME IS NULL AND 
-                                        CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
-                                    ORDER BY DISTIME DESC", str_SQL));
+                                MPU.dt_CurrentLog = MPU.ReadSQLToDT(sbSQL.ToString());
 
                                 if (isFirstReConnect == true)
                                 {
@@ -725,41 +767,21 @@ namespace MES_N
                 bool_run = false;
                 try
                 {
-                    #region 舊的
-                    //int_DRnum = 0;
-                    //foreach (DataRow row in MPU.dt_MainTable.Rows)
-                    //{
-                    //    if (bool_firstadd)
-                    //    {
-                    //        list_dr.Add(row);
-                    //    }
-                    //    else
-                    //        list_dr[int_DRnum] = row;
-                    //    int_DRnum++;
-                    //}
+                    // 每天晚上12點，刪除超過3個月的connectlog紀錄
+                    if (DateTime.Now.ToString("HH") == "00")
+                    {
+                        MPU.ReadSQL(string.Format(@"
+                                delete tb_connectlog 
+                                where DISTIME is not null and CONTIME is not null and CONTIME <= '{0}'",
+                                    DateTime.Now.AddMonths(-3).ToString("yyyy-MM-dd HH:mm:ss")));
+                    }
 
-                    //bool_firstadd = false;
-                    #endregion
-
+                    // 更新dgvMainView畫面
                     foreach (KeyValuePair<int, string> item in MPU.dic_ReceiveMessage)
                     {
                         try
                         {
-                            #region 舊的
-                            //list_dr[item.Key]["Static"] = DateTime.Now.ToString("HH:mm:ss") + " ... " + item.Value;
-                            //if (list_dr[item.Key]["Static"].ToString().Contains(MPU.str_ErrorMessage[0]) ||
-                            //    list_dr[item.Key]["Static"].ToString().Contains(MPU.str_ErrorMessage[1]) ||
-                            //    list_dr[item.Key]["Static"].ToString().Contains(MPU.str_ErrorMessage[2]))
-                            //{
-                            //    dgvMainView.Rows[item.Key].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
-                            //}
-                            //else if (string.IsNullOrEmpty(list_dr[item.Key]["Static"].ToString()))
-                            //    list_dr[item.Key]["Static"] = DateTime.Now.ToString("HH:mm:ss") + " ... " + MPU.str_ErrorMessage[1];
-                            //else
-                            //    dgvMainView.Rows[item.Key].DefaultCellStyle.BackColor = System.Drawing.Color.White;
-                            #endregion 
-                            
-                            if (MPU.dt_MainTable.Rows.Count == dgvMainView.Rows.Count)
+                           if (MPU.dt_MainTable.Rows.Count == dgvMainView.Rows.Count)
                             {
                                 if (MPU.dt_MainTable.Rows[item.Key]["Static"] != null && dgvMainView.Rows[item.Key] != null)
                                 {
@@ -782,21 +804,25 @@ namespace MES_N
                         {
                             bool_run = true;
                             MPU.WriteErrorCode("", "[tmrUpdateDT] " + ex.StackTrace);
-                            Console.WriteLine($"[tmrUpdateDT setDataRow - {item.Key.ToString()}] " + ex.StackTrace);
+                            Console.WriteLine($"[tmrUpdateDT setDataRow - {item.Key.ToString()}] " + ex.StackTrace);    
                             throw ex;
                         }
 
-                        if (DateTime.Now.ToString("HH") == "00" && DateTime.Now.ToString("yyyy-MM-dd") != string_dno)
+                        // 若config.txt參數為true時，才將DNO寫入tb_dayno資料表，若為false則不寫入
+                        if (canInsertDayno)
                         {
-                            string_dno = DateTime.Now.ToString("yyyy-MM-dd");
+                            // 整點時紀錄最新DNO
+                            if (DateTime.Now.ToString("mm") == "00" && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != string_dno)
+                            {
+                                string_dno = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
 
-                            MPU.ReadSQL(@"
+                                MPU.ReadSQL(@"
                                 INSERT INTO tb_dayno(DNO,SYSTIME,TYPE) VALUES( (SELECT MAX(DNO) FROM tb_recordslog),GETDATE(),'RE');
                                 INSERT INTO tb_dayno(DNO,SYSTIME,TYPE) VALUES( (SELECT MAX(DNO) FROM tb_P2recordslog),GETDATE(),'P2');
                                 INSERT INTO tb_dayno(DNO,SYSTIME,TYPE) VALUES( (SELECT MAX(DNO) FROM tb_P3recordslog),GETDATE(),'P3');");
+                            }
                         }
-
-                    }
+                    } 
                     bool_run = true;
                 }
                 catch (Exception ex)
@@ -1024,34 +1050,50 @@ namespace MES_N
                     end = dtpEnd.Value;
                     //end = end.AddDays(1);
 
-                    string str_SQL = "";
-                    for (int i = 0; i < MPU.dt_MainTable.Rows.Count; i++)
-                    {
-                        str_SQL += "'" 
-                            + MPU.dt_MainTable.Rows[i]["DIP"].ToString() + "," 
-                            + MPU.dt_MainTable.Rows[i]["SID"].ToString() + "," 
-                            + MPU.dt_MainTable.Rows[i]["NOTE"].ToString() + "'" 
-                            + ",";
-                    }
+                    StringBuilder sbSQL = new StringBuilder();
 
-                    str_SQL = str_SQL.Trim(',');
+                    // 1.建立暫存表
+                    sbSQL.AppendFormat(@"create table #SIDtable
+					                    (
+						                    SID char(100)
+					                    )");
+                    sbSQL.AppendLine();
+
+                    // 2.將SID加入暫存表
+                    sbSQL.AppendLine("insert into #SIDtable (SID) values ");
+                    for (int j = 0; j < MPU.dt_MainTable.Rows.Count; j++)
+                    {
+	                    if (j == (MPU.dt_MainTable.Rows.Count - 1))
+		                    sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["SID"]}');");
+	                    else
+		                    sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["SID"]}'),");
+                    }
+                    sbSQL.AppendLine();
+
+                    // 3.將tb_connectlog與暫存表做inner join，篩選出需要的資料
+                    sbSQL.AppendFormat(@"SELECT 
+                                            DIP IP, 
+                                            tb_connectlog.SID, 
+                                            DVALUE Note, 
+                                            FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, 
+                                            FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, 
+                                            CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, 
+                                            CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort 
+                                        FROM tb_connectlog 
+                                        inner join #SIDtable on tb_connectlog.SID = #SIDtable.SID
+                                        WHERE 
+                                            ((CONTIME BETWEEN '{0}' AND '{1}') OR (DISTIME BETWEEN '{2}' AND 
+                                            '{3}')) 
+                                        ORDER BY Sort DESC",
+                                        start.ToString("yyyy-MM-dd HH:mm:ss"), end.ToString("yyyy-MM-dd HH:mm:ss"), start.ToString("yyyy-MM-dd HH:mm:ss"), end.ToString("yyyy-MM-dd HH:mm:ss"));
+                    sbSQL.AppendLine();
+
+                    // 4.移除剛才建立的暫存表
+                    sbSQL.AppendLine("drop table #SIDtable;");
+
                     DataTable DataTable_HistLog = new DataTable();
                     DataTable_HistLog = null;
-                    DataTable_HistLog = MPU.ReadSQLToDT(string.Format(@"
-                        SELECT 
-                            DIP IP, 
-                            SID, 
-                            DVALUE Note, 
-                            FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss') as 重新連線時間, 
-                            FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss') as 斷線時間, 
-                            CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as 狀態, 
-                            CONCAT(FORMAT ([CONTIME], 'yyyy-MM-dd　HH:mm:ss'),FORMAT ([DISTIME], 'yyyy-MM-dd　HH:mm:ss')) as Sort 
-                        FROM tb_connectlog 
-                        WHERE 
-                            ((CONTIME BETWEEN '{1}' AND '{2}') OR (DISTIME BETWEEN '{3}' AND 
-                            '{4}')) AND CONCAT(LTRIM(RTRIM(DIP)),',',LTRIM(RTRIM(SID)),',',LTRIM(RTRIM(DVALUE))) IN ({0}) 
-                        ORDER BY Sort DESC", 
-                        str_SQL, start.ToString("yyyy-MM-dd HH:mm:ss"), end.ToString("yyyy-MM-dd HH:mm:ss"), start.ToString("yyyy-MM-dd HH:mm:ss"), end.ToString("yyyy-MM-dd HH:mm:ss")));
+                    DataTable_HistLog = MPU.ReadSQLToDT(sbSQL.ToString());
                     
                     if (MPU.Ethernet == true)
                     {
@@ -1184,41 +1226,77 @@ namespace MES_N
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (MessageBox.Show("程式即將關閉，是否繼續？", "確認", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            try
             {
-                tmrUpdateDT.Stop();
-                tmrUpdateDT.Enabled = false;
-                for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
+                if (MessageBox.Show("程式即將關閉，是否繼續？", "提示", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 {
-                    if (intDiveceIndex.Contains(i))
-                    {
-                        int n = intDiveceIndex.IndexOf(i);
-                        if (MesNetSite_Sys[n].TcpClient_Reader != null && MesNetSite_Sys[n].TcpClient_Reader.Connected)
-                        {
-                            MesNetSite_Sys[n].bool_AutoRun = false;
-                            MesNetSite_Sys[n].TcpClient_Reader.Close();
-                            MesNetSite_Sys[n].TcpClient_Reader = null;
-                        }
-                    }
-                }
+                    tmrUpdateDT.Stop();
+                    tmrUpdateDT.Enabled = false;
+                    bool_isAutoRun = false;
 
-                Thread.Sleep(100);
-
-                for (int i = 0; i < intThreadIndex; i++)
-                {
-                    if (Thread_MesNetSite[i] != null)
+                    while (isTcpConnect.IndexOf(true) != -1)
                     {
-                        if (Thread_MesNetSite[i].IsAlive)
+                        for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
                         {
-                            Thread_MesNetSite[i].Abort();
+                            if (intDiveceIndex.Contains(i))
+                            {
+                                int n = intDiveceIndex.IndexOf(i);
+                                MesNetSite_Sys[n].bool_AutoRun = false;
+                                MesNetSite_Sys[n].bool_reconnect = false;
+                                if ((MesNetSite_Sys[n].TcpClient_Reader != null) && MesNetSite_Sys[n].TcpClient_Reader.Connected)
+                                {
+                                    MesNetSite_Sys[n].TcpClient_Reader.Close();
+                                }
+                                else if ((MesNetSite_Sys[n].TcpClient_Reader != null) && !MesNetSite_Sys[n].TcpClient_Reader.Connected)
+                                {
+                                    MesNetSite_Sys[n].TcpClient_Reader = null;
+                                    isTcpConnect[n] = false;
+                                }
+                                else
+                                {
+                                    isTcpConnect[n] = false;
+                                }
+                            }
                         }
+                        Thread.Sleep(1000);
                     }
+
+                    Thread.Sleep(100);
+
+                    while (isThreadAlive.IndexOf(true) != -1)
+                    {
+                        for (int i = 0; i < intThreadIndex; i++)
+                        {
+                            if (Thread_MesNetSite[i] != null)
+                            {
+                                if (Thread_MesNetSite[i].IsAlive)
+                                {
+                                    Thread_MesNetSite[i].Abort();
+                                    //只要有任何一個執行緒還在運作，就把isThreadAlive改為true
+                                    isThreadAlive[i] = true;
+                                }
+                                else
+                                {
+                                    isThreadAlive[i] = false;
+                                }
+                            }
+                            else
+                            {
+                                isThreadAlive[i] = false;
+                            }
+                        }
+                        Thread.Sleep(1000);
+                    }
+
+                    Environment.Exit(0);
                 }
-                bool_isAutoRun = false;
-                Environment.Exit(0);
+                else
+                    e.Cancel = true;    //取消關閉
             }
-            else
-                e.Cancel = true;    //取消關閉
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
         }
 
         private void dataGridView_Threads_DataError(object sender, DataGridViewDataErrorEventArgs e)

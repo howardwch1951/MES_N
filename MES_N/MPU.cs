@@ -53,11 +53,77 @@ namespace MES_N
         public static Boolean Ethernet = false;
 
         public static String conStr = "server=192.168.1.58;Initial Catalog=dbMES_new;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
+        public static String conStr_dbMEStemp = "server=192.168.1.58;Initial Catalog=dbMES_temp;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
         public static String conStr_old = "server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
 
         //public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection("server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!");
         public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection(conStr);
         public static System.Data.SqlClient.SqlConnection conn_old = new System.Data.SqlClient.SqlConnection(conStr_old);
+
+        #region 讀取SQL-MES暫存資料庫(dbMES_temp)
+        /// <summary>
+        /// 讀取SQL(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        public static void ReadSQL_dbMEStemp(string pSQL)
+        {
+            try
+            {
+                if (Check_Connection.CheckConnaction())
+                {
+                    using (SqlConnection conn = new SqlConnection(conStr_dbMEStemp))
+                    {
+                        conn.Open();
+                        SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        cmd.CommandTimeout = 3;
+                        cmd.ExecuteNonQuery();
+                        cmd.Cancel();
+                        conn.Close();
+                        MPU.Ethernet = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MPU.Ethernet = false;
+                throw ex;
+            }
+        }
+        #endregion
+
+        #region 讀取SQL回傳DataTable-MES暫存資料庫(dbMES_temp)
+        /// <summary>
+        /// 讀取SQL回傳DataTable(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        public static DataTable ReadSQLToDT_dbMEStemp(string pSQL, int timeout = 3)
+        {
+            DataTable dtSource = new DataTable();
+            try
+            {
+                if (Check_Connection.CheckConnaction())
+                {
+                    using (SqlConnection conn = new SqlConnection(conStr_dbMEStemp))
+                    {
+                        conn.Open();
+                        SqlCommand cmd = new SqlCommand(pSQL, conn);
+                        cmd.CommandTimeout = timeout;
+                        SqlDataAdapter adapter = new SqlDataAdapter(cmd);
+                        adapter.Fill(dtSource);
+                        cmd.Cancel();
+                        conn.Close();
+                        MPU.Ethernet = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MPU.Ethernet = false;
+                throw ex;
+            }
+            return dtSource;
+        }
+        #endregion
 
         #region 讀取SQL
         /// <summary>
@@ -85,6 +151,9 @@ namespace MES_N
             catch (Exception ex)
             {
                 MPU.Ethernet = false;
+
+                //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
+                ReadSQL_dbMEStemp(pSQL);
                 throw ex;
             }
         }
@@ -118,7 +187,9 @@ namespace MES_N
             catch (Exception ex)
             {
                 MPU.Ethernet = false;
-                throw ex;
+
+                //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
+                ReadSQLToDT_dbMEStemp(pSQL);
             }
             return dtSource;
         }
