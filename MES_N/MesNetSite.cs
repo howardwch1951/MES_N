@@ -2319,7 +2319,7 @@ namespace MES_N
         }
         #endregion
 
-        #region 新版本MES function 11-29
+        #region 新版本MES function 11-29, 33
 
         #region function_11_flow 流量計(8_3、8_4)
         //流量計
@@ -4021,6 +4021,88 @@ namespace MES_N
                     String_SQLcommand = "";
                     String_SQLcommand_old = "";
                     Console.WriteLine("Exception source: {0}", EX.Source + "," + EX.Message);
+                }
+            }
+        }
+        #endregion
+
+        #region function_33 調頻機燈號判斷
+        void function_33()
+        {
+            try
+            {
+                for (int j = 0; j < 8; j++)
+                {
+                    Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight2_1[j], 16));
+                }
+
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+
+                if (int_Net_Available > 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
+                    String str_hex = "";
+                    double double_Mpa = 0;
+
+                    str_hex = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
+
+                    int[] eight = new int[str_hex.Length];
+
+                    for (int j = 0; j < eight.Length; j = j + 4)
+                    {
+                        eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
+                        //感測值結果
+                        double mA = Convert.ToDouble(eight[0]) * 20 / 4095;
+                        double_Mpa = 0.00003 * Math.Pow(mA, 2) + 0.068 * mA - 0.3725;
+                    }
+
+                    double_Mpa = Math.Round(double_Mpa, 2);
+                    string str_light = "";
+                    if (double_Mpa == 0)
+                    {
+                        //黃燈(待機中)
+                        String_ReData[index] = "黃燈";
+                        str_light = "0010";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else if (double_Mpa < 0)
+                    {
+                        //綠燈(運行中)
+                        String_ReData[index] = "綠燈";
+                        str_light = "0100";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + str_light + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                if (ex.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", ex.Source);
                 }
             }
         }
