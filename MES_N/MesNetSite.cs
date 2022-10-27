@@ -125,6 +125,7 @@ namespace MES_N
 
                         CommandSet();
 
+                        Console.WriteLine($"連線成功!!");
                     }
                 }
                 catch (Exception EX)
@@ -263,31 +264,31 @@ namespace MES_N
                                             function_15(F15_port);
                                             break;
                                         case "16": //PC S1F1 燈號
-                                            function_16_pc_light();
+                                            function_16_S1F1_light();
                                             break;
                                         case "17": //PC S1F2 壓力
-                                            function_17_pc_pressure();
+                                            function_17_S1F2_pressure();
                                             break;
                                         case "18": //PC S1F3 流量
-                                            function_18_pc_flow();
+                                            function_18_S1F3_flow();
                                             break;
                                         case "19": //PC S1F4 溫度
-                                            function_19_pc_temperature();
+                                            function_19_S1F4_temperature();
                                             break;
                                         case "20": //PC S1F5 吸嘴阻值
-                                            function_20_pc_resistance();
+                                            function_20_S1F5_resistance();
                                             break;
                                         case "21": //PC S1F6 H-Judge讀值
-                                            function_21_pc_H_Judge();
+                                            function_21_S1F6_H_Judge();
                                             break;
                                         case "22": //PC S1F7 螢幕辨識參數(Temperature, Power, force, Time)
-                                            function_22_pc_shoucut();
+                                            function_22_S1F7_shoucut();
                                             break;
                                         case "23": //BrainChild溫度
                                             function_23_brainchild();
                                             break;
                                         case "24": //PC S1F8 舉離機(NMPA, NMPB)
-                                            function_24_pc_NMPA_NMPB();
+                                            function_24_S1F8();
                                             break;
                                         case "25": //新氣壓頭讀取
                                             function_25(Convert.ToInt32(dicDeviceList[String_Port][i].Split(';')[0].Split('_')[1]));
@@ -306,6 +307,9 @@ namespace MES_N
                                             break;
                                         case "32": //廠務設備 水流量
                                             function_LFM();
+                                            break;
+                                        case "33": //調頻機燈號判斷
+                                            function_33();
                                             break;
                                         default:
                                             //SetStatus();
@@ -419,14 +423,14 @@ namespace MES_N
                                 String_SQLcommand = "";
 
                             // 每分鐘回寫資料庫
-                            if (DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
-                            {
-                                strSQLRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                            //if (DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
+                            //{
+                            //    strSQLRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
 
-                                sbSQL.AppendLine(String_SQLcommand);
-                                if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
-                                    MPU.ReadSQL(sbSQL.ToString());
-                            }
+                            //    sbSQL.AppendLine(String_SQLcommand);
+                            //    if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                            //        MPU.ReadSQL(sbSQL.ToString());
+                            //}
 
 
                             //if (!string.IsNullOrWhiteSpace(String_SQLcommand_old))
@@ -478,7 +482,6 @@ namespace MES_N
                         //}
                         TcpClientConnect();
                         bool_reconnect = true;
-                        Console.WriteLine($"連線成功!!");
 
                     }
                 }
@@ -681,18 +684,11 @@ namespace MES_N
 
                     // str_T += str_H;
 
-                    if (str_values_temp != str_T + str_H)
-                    {   
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[0].ToString() + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ";
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[0].ToString() + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ";
 
-                        String_SQLcommand += ", ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[1].ToString() + "','" + str_H + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "')";
+                    String_SQLcommand += ", ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[1].ToString() + "','" + str_H + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "')";
 
-                        str_values_temp = str_T + str_H;
-                    }
-                    else
-                    {
-                        String_SQLcommand = "";
-                    }
+                    str_values_temp = str_T + str_H;
 
                     String_ReData[index] = str_T + ":" + str_H + String_Sclass;
                 }
@@ -3016,8 +3012,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_16_pc_light S1F1 燈號
-        void function_16_pc_light()
+        #region function_16_S1F1_light S1F1 燈號
+        void function_16_S1F1_light()
         {
             try
             {
@@ -3089,8 +3085,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_17_pc_pressure S1F2 氣壓
-        void function_17_pc_pressure()
+        #region function_17_S1F2_pressure S1F2 氣壓
+        void function_17_S1F2_pressure()
         {
             try
             {
@@ -3149,8 +3145,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_18_pc_flow S1F3 流量
-        void function_18_pc_flow()
+        #region function_18_S1F3_flow S1F3 流量
+        void function_18_S1F3_flow()
         {
             try
             {
@@ -3200,8 +3196,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_19_pc_temperature S1F4 溫度
-        void function_19_pc_temperature()
+        #region function_19_S1F4_temperature S1F4 溫度
+        void function_19_S1F4_temperature()
         {
             try
             {
@@ -3252,8 +3248,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_20_pc_resistance S1F5 種晶吸嘴阻值
-        void function_20_pc_resistance()
+        #region function_20_S1F5_resistance S1F5 種晶吸嘴阻值
+        void function_20_S1F5_resistance()
         {
             try
             {
@@ -3305,8 +3301,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_21_pc_H_Judge S1F6 H-Judge讀值
-        void function_21_pc_H_Judge()
+        #region function_21_S1F6_H_Judge S1F6 H-Judge讀值
+        void function_21_S1F6_H_Judge()
         {
             try
             {
@@ -3358,8 +3354,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_22_pc_shoucut S1F7 螢幕辨識參數(Temperature, Power, force, Time)
-        void function_22_pc_shoucut()
+        #region function_22_S1F7_shoucut S1F7 螢幕辨識參數(Temperature, Power, force, Time)
+        void function_22_S1F7_shoucut()
         {
             try
             {
@@ -3481,8 +3477,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_24_pc_NMPA_NMPB S1F8 舉離機(NMPA, NMPB)
-        void function_24_pc_NMPA_NMPB()
+        #region function_24_S1F8 S1F8 舉離機(NMPA, NMPB)
+        void function_24_S1F8()
         {
             try
             {
@@ -3493,21 +3489,22 @@ namespace MES_N
 
                 for (int j = 0; j <= 50; j++)
                 {
-                    System.Threading.Thread.Sleep(10);
+                    System.Threading.Thread.Sleep(200);
                     System.Windows.Forms.Application.DoEvents();
                 }
 
                 int_Net_Available = TcpClient_Reader.Available;
                 if (int_Net_Available > 0)
                 {
+                    Byte_Command_Re = new byte[int_Net_Available];
                     NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
 
-                    string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';');
+                    string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim('\0').Trim(';');
 
-                    if (!string.IsNullOrWhiteSpace(temp))
+                    if (!string.IsNullOrWhiteSpace(temp) || !string.IsNullOrEmpty(temp))
                     {
                         //綠燈(運行中)
-                        String_ReData[index] = "NMPA, NMPB (" + temp + ")";
+                        String_ReData[index] = "S1F8 (" + temp + ")";
                         String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                         String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                     }
@@ -4107,6 +4104,8 @@ namespace MES_N
             }
         }
         #endregion
+
+        
 
         #endregion
 

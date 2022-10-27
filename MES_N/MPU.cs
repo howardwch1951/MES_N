@@ -28,6 +28,7 @@ namespace MES_N
 
         public static Boolean isStatusChange = false;
 
+
         public static BindingSource bs_MainTable = new BindingSource();
 
         public static BindingSource bs_CurrentLog = new BindingSource();
