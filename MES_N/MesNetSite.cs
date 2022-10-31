@@ -3226,8 +3226,8 @@ namespace MES_N
 
                     String_ReData[index] = "溫度 (" + temp + ")";
 
-                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp.Split('/')[0] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp.Split('/')[0] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
                 }
                 else
                 {
