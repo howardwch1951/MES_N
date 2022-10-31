@@ -125,11 +125,18 @@ namespace MES_N
 
                         CommandSet();
 
+                        isConnAutoRun = false;
+                        isReconnecting = false;
+
                         Console.WriteLine($"連線成功!!");
                     }
                 }
                 catch (Exception EX)
                 {
+                    isConnAutoRun = false;
+                    isReconnecting = false;
+                    Console.WriteLine($"連線失敗");
+
                     if (EX.Source != null)
                     {
                         Console.WriteLine("M0091:Exception source: {0}", String_DIP + "[" + EX.Message + "]");
@@ -153,7 +160,8 @@ namespace MES_N
 
         Boolean[] FirstRec = new Boolean[] { };
 
-        public bool bool_reconnect = true;
+        public bool isReconnecting = false;
+        public bool isConnAutoRun = true;
 
         int int_Reconnect = 0;
         int F11_port = 0;
@@ -423,14 +431,14 @@ namespace MES_N
                                 String_SQLcommand = "";
 
                             // 每分鐘回寫資料庫
-                            //if (DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
-                            //{
-                            //    strSQLRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                            if (DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
+                            {
+                                strSQLRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
 
-                            //    sbSQL.AppendLine(String_SQLcommand);
-                            //    if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
-                            //        MPU.ReadSQL(sbSQL.ToString());
-                            //}
+                                sbSQL.AppendLine(String_SQLcommand);
+                                if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                                    MPU.ReadSQL(sbSQL.ToString());
+                            }
 
 
                             //if (!string.IsNullOrWhiteSpace(String_SQLcommand_old))
@@ -442,9 +450,10 @@ namespace MES_N
                         if ((TcpClient_Reader == null) || !TcpClient_Reader.Connected)
                         {
                             //TCPclient連線失敗
-                            if (bool_reconnect)
+                            if (isReconnecting == false)
                             {
-                                bool_reconnect = false;
+                                isReconnecting = true;
+                                isConnAutoRun = true;
                                 new Thread(Reconnect).Start();
                             }
                         }
@@ -464,7 +473,7 @@ namespace MES_N
 
         private void Reconnect()    
         {
-            while (!bool_reconnect)
+            while (isConnAutoRun)
             {
                 int_Reconnect++;
                 Console.WriteLine($"等待重新連線 ({int_Reconnect})");
@@ -481,14 +490,10 @@ namespace MES_N
                         //    TcpClient_Reader = null;
                         //}
                         TcpClientConnect();
-                        bool_reconnect = true;
-
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    bool_reconnect = false;
-                    Console.WriteLine($"連線失敗!!");
 
                 }
                 Thread.Sleep(1000);
@@ -682,8 +687,7 @@ namespace MES_N
 
                     string str_H = Convert.ToInt32(String.Format("{0:X2}", Byte_Command_Re[11]) + String.Format("{0:X2}", Byte_Command_Re[12]), 16).ToString().PadLeft(4, '0'); ;
 
-                    // str_T += str_H;
-
+                    
                     String_SQLcommand = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[0].ToString() + "','" + str_T + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "') ";
 
                     String_SQLcommand += ", ('" + String_TID + "','" + String_DIP + "','" + String_SID.Split('.')[1].ToString() + "','" + str_H + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "')";

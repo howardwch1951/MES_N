@@ -1242,7 +1242,8 @@ namespace MES_N
                             {
                                 int n = intDiveceIndex.IndexOf(i);
                                 MesNetSite_Sys[n].bool_AutoRun = false;
-                                MesNetSite_Sys[n].bool_reconnect = false;
+                                MesNetSite_Sys[n].isReconnecting = true;
+                                MesNetSite_Sys[n].isReconnecting = false;
                                 if ((MesNetSite_Sys[n].TcpClient_Reader != null) && MesNetSite_Sys[n].TcpClient_Reader.Connected)
                                 {
                                     MesNetSite_Sys[n].TcpClient_Reader.Close();
@@ -1258,7 +1259,7 @@ namespace MES_N
                                 }
                             }
                         }
-                        Thread.Sleep(1000);
+                        Thread.Sleep(100);
                     }
 
                     Thread.Sleep(100);
