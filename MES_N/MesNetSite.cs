@@ -96,7 +96,7 @@ namespace MES_N
                         Thread.Sleep(100);
                     }
 
-                    TcpClient_Reader = TimeOutSocket.Connect(new System.Net.IPEndPoint(new System.Net.IPAddress(Bytes_IP), Convert.ToInt16(String_Port)), 100);
+                    TcpClient_Reader = TimeOutSocket.Connect(new System.Net.IPEndPoint(new System.Net.IPAddress(Bytes_IP), Convert.ToInt16(String_Port)), 500);
 
                     //
                     if (!(TcpClient_Reader == null) && TcpClient_Reader.Connected)
@@ -125,16 +125,11 @@ namespace MES_N
 
                         CommandSet();
 
-                        isConnAutoRun = false;
-                        isReconnecting = false;
-
                         Console.WriteLine($"連線成功!!");
                     }
                 }
                 catch (Exception EX)
                 {
-                    isConnAutoRun = false;
-                    isReconnecting = false;
                     Console.WriteLine($"連線失敗");
 
                     if (EX.Source != null)
@@ -144,7 +139,7 @@ namespace MES_N
                         if (EX.Message == "TimeOut Exception (TimeOutSocket-0040)")
                         {
                             //初此啟動之後，把此執行緒休息時間延長至10秒
-                            int_ReaderSleep = 1000;
+                            int_ReaderSleep = 10000;
                             //System.Threading.Thread.Sleep(10000);
                         }
                     }
@@ -160,8 +155,7 @@ namespace MES_N
 
         Boolean[] FirstRec = new Boolean[] { };
 
-        public bool isReconnecting = false;
-        public bool isConnAutoRun = true;
+        public bool bool_reconnect = true;
 
         int int_Reconnect = 0;
         int F11_port = 0;
@@ -450,10 +444,9 @@ namespace MES_N
                         if ((TcpClient_Reader == null) || !TcpClient_Reader.Connected)
                         {
                             //TCPclient連線失敗
-                            if (isReconnecting == false)
+                            if (bool_AutoRun && bool_reconnect)
                             {
-                                isReconnecting = true;
-                                isConnAutoRun = true;
+                                bool_reconnect = false;
                                 new Thread(Reconnect).Start();
                             }
                         }
@@ -461,7 +454,7 @@ namespace MES_N
 
                     boolMESnetISrun = false;
 
-                    System.Threading.Thread.Sleep(1000);
+                    System.Threading.Thread.Sleep(int_ReaderSleep);
                 }
                 catch (Exception ex)
                 {
@@ -471,9 +464,9 @@ namespace MES_N
             } 
         }
 
-        private void Reconnect()    
+        private void Reconnect()
         {
-            while (isConnAutoRun)
+            while (!bool_reconnect)
             {
                 int_Reconnect++;
                 Console.WriteLine($"等待重新連線 ({int_Reconnect})");
@@ -482,7 +475,6 @@ namespace MES_N
                     if (int_Reconnect >= 5)
                     {
                         Console.WriteLine($"正在重新連線...");
-
                         int_Reconnect = 0;
                         //if (TcpClient_Reader != null)
                         //{
@@ -490,11 +482,14 @@ namespace MES_N
                         //    TcpClient_Reader = null;
                         //}
                         TcpClientConnect();
+                        bool_reconnect = true;
+
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-
+                    bool_reconnect = false;
+                    Console.WriteLine($"連線失敗!!");
                 }
                 Thread.Sleep(1000);
             }

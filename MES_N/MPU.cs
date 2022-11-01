@@ -53,9 +53,9 @@ namespace MES_N
 
         public static Boolean Ethernet = false;
 
-        public static String conStr = "server=192.168.1.58;Initial Catalog=dbMES_new;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
-        public static String conStr_dbMEStemp = "server=192.168.1.58;Initial Catalog=dbMES_temp;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
-        public static String conStr_old = "server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!";
+        public static String conStr = "server=192.168.1.58;Initial Catalog=dbMES_new;Persist Security Info=True;User ID=sa;Password=aaa222!!!;Max Pool Size=200";
+        public static String conStr_dbMEStemp = "server=192.168.1.58;Initial Catalog=dbMES_temp;Persist Security Info=True;User ID=sa;Password=aaa222!!!;Max Pool Size=200";
+        public static String conStr_old = "server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!;Max Pool Size=200";
 
         //public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection("server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!");
         public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection(conStr);
@@ -70,18 +70,15 @@ namespace MES_N
         {
             try
             {
-                if (Check_Connection.CheckConnaction())
+                using (SqlConnection conn = new SqlConnection(conStr_dbMEStemp))
                 {
-                    using (SqlConnection conn = new SqlConnection(conStr_dbMEStemp))
-                    {
-                        conn.Open();
-                        SqlCommand cmd = new SqlCommand(pSQL, conn);
-                        cmd.CommandTimeout = 3;
-                        cmd.ExecuteNonQuery();
-                        cmd.Cancel();
-                        conn.Close();
-                        MPU.Ethernet = true;
-                    }
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = 3;
+                    cmd.ExecuteNonQuery();
+                    cmd.Cancel();
+                    conn.Close();
+                    MPU.Ethernet = true;
                 }
             }
             catch (Exception ex)
@@ -102,19 +99,16 @@ namespace MES_N
             DataTable dtSource = new DataTable();
             try
             {
-                if (Check_Connection.CheckConnaction())
+                using (SqlConnection conn = new SqlConnection(conStr_dbMEStemp))
                 {
-                    using (SqlConnection conn = new SqlConnection(conStr_dbMEStemp))
-                    {
-                        conn.Open();
-                        SqlCommand cmd = new SqlCommand(pSQL, conn);
-                        cmd.CommandTimeout = timeout;
-                        SqlDataAdapter adapter = new SqlDataAdapter(cmd);
-                        adapter.Fill(dtSource);
-                        cmd.Cancel();
-                        conn.Close();
-                        MPU.Ethernet = true;
-                    }
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = timeout;
+                    SqlDataAdapter adapter = new SqlDataAdapter(cmd);
+                    adapter.Fill(dtSource);
+                    cmd.Cancel();
+                    conn.Close();
+                    MPU.Ethernet = true;
                 }
             }
             catch (Exception ex)
@@ -135,26 +129,26 @@ namespace MES_N
         {
             try
             {
-                if (Check_Connection.CheckConnaction())
+                using (SqlConnection conn = new SqlConnection(conStr))
                 {
-                    using (SqlConnection conn = new SqlConnection(conStr))
-                    {
-                        conn.Open();
-                        SqlCommand cmd = new SqlCommand(pSQL, conn);
-                        cmd.CommandTimeout = 3;
-                        cmd.ExecuteNonQuery();
-                        cmd.Cancel();
-                        conn.Close();
-                        MPU.Ethernet = true;
-                    }
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = 3;
+                    cmd.ExecuteNonQuery();
+                    cmd.Cancel();
+                    conn.Close();
+                    MPU.Ethernet = true;
                 }
             }
             catch (Exception ex)
             {
-                MPU.Ethernet = false;
+                if (Check_Connection.CheckConnaction())
+                {
+                    MPU.Ethernet = false;
 
-                //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
-                ReadSQL_dbMEStemp(pSQL);
+                    //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
+                    ReadSQL_dbMEStemp(pSQL);
+                }
                 throw ex;
             }
         }
@@ -170,27 +164,27 @@ namespace MES_N
             DataTable dtSource = new DataTable();
             try
             {
-                if (Check_Connection.CheckConnaction())
+                using (SqlConnection conn = new SqlConnection(conStr))
                 {
-                    using (SqlConnection conn = new SqlConnection(conStr))
-                    {
-                        conn.Open();
-                        SqlCommand cmd = new SqlCommand(pSQL, conn);
-                        cmd.CommandTimeout = timeout;
-                        SqlDataAdapter adapter = new SqlDataAdapter(cmd);
-                        adapter.Fill(dtSource);
-                        cmd.Cancel();
-                        conn.Close();
-                        MPU.Ethernet = true;
-                    }
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = timeout;
+                    SqlDataAdapter adapter = new SqlDataAdapter(cmd);
+                    adapter.Fill(dtSource);
+                    cmd.Cancel();
+                    conn.Close();
+                    MPU.Ethernet = true;
                 }
             }
             catch (Exception ex)
             {
-                MPU.Ethernet = false;
+                if (Check_Connection.CheckConnaction())
+                {
+                    MPU.Ethernet = false;
 
-                //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
-                ReadSQLToDT_dbMEStemp(pSQL);
+                    //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
+                    ReadSQLToDT_dbMEStemp(pSQL);
+                }
             }
             return dtSource;
         }
