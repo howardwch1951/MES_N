@@ -28,6 +28,7 @@ namespace MES_N
 
         public static Boolean isStatusChange = false;
 
+        public static bool canInsertDayno, canInsertToDB;
 
         public static BindingSource bs_MainTable = new BindingSource();
 

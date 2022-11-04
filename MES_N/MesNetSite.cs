@@ -156,6 +156,7 @@ namespace MES_N
         Boolean[] FirstRec = new Boolean[] { };
 
         public bool bool_reconnect = true;
+        bool isConnect = false;
 
         int int_Reconnect = 0;
         int F11_port = 0;
@@ -313,6 +314,9 @@ namespace MES_N
                                         case "33": //調頻機燈號判斷
                                             function_33();
                                             break;
+                                        case "34": //清洗機水阻值
+                                            function_34();
+                                            break;
                                         default:
                                             //SetStatus();
                                             break;
@@ -370,7 +374,7 @@ namespace MES_N
                                 String_ReData[index] = MPU.str_ErrorMessage[1];
                             }
 
-
+                            #region 舊的
                             if (bool_AutoRun && MPU.Ethernet)
                             {
                                 if (!string.IsNullOrEmpty(MPU.dic_ReceiveMessage[int_ThreadNum + index]))
@@ -417,6 +421,43 @@ namespace MES_N
                                     }
                                 }
                             }
+                            #endregion
+
+                            if (bool_AutoRun)
+                            {
+                                if (TcpClient_Reader == null || !TcpClient_Reader.Connected)
+                                {
+                                    // IF判斷如果不存在斷線紀錄
+                                    sbSQL.AppendFormat(@"IF NOT EXISTS (SELECT * FROM tb_connectlog 
+                                                        WHERE SID = '{0}' and CONTIME IS NULL)",
+                                                        String_SID);
+                                    sbSQL.AppendLine();
+
+                                    // 新增斷線紀錄
+                                    sbSQL.Append("  INSERT INTO ");
+                                    sbSQL.AppendFormat(@"tb_connectlog (DIP, ADDRESS, SID, DVALUE, DISTIME, SYSTIME) 
+                                                            VALUES ('{0}', {1}, '{2}', '{3}', '{4}', '{5}')",
+                                                        String_DIP, String_Address, String_SID, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                                    sbSQL.AppendLine();
+                                }
+                                else
+                                {
+                                    // IF判斷如果存在斷線紀錄，且沒有重新連線紀錄
+                                    sbSQL.AppendFormat(@"IF EXISTS (SELECT * FROM tb_connectlog 
+                                                        WHERE SID = '{2}' and CONTIME IS NULL)",
+                                                            String_DIP, String_Address, String_SID, String_NOTE);
+                                    sbSQL.AppendLine();
+
+                                    // 更新原本斷線紀錄，將連線時間更新上去
+                                    sbSQL.Append("  UPDATE ");
+                                    sbSQL.AppendFormat(@"tb_connectlog SET CONTIME = '{0}' 
+                                                                WHERE  
+                                                                SID = '{3}' and  
+                                                                CONTIME IS NULL",
+                                                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_SID, String_NOTE);
+                                    sbSQL.AppendLine();
+                                }
+                            }
 
                             // 刷新設備狀態
                             SetStatus();
@@ -425,7 +466,7 @@ namespace MES_N
                                 String_SQLcommand = "";
 
                             // 每分鐘回寫資料庫
-                            if (DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
+                            if (MPU.canInsertToDB && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
                             {
                                 strSQLRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
 
@@ -4104,7 +4145,74 @@ namespace MES_N
         }
         #endregion
 
-        
+        #region function_34 水阻值
+        void function_34()
+        {
+            try
+            {
+                for (int j = 0; j < 8; j++)
+                {
+                    Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(String_SeData05[1].Split(' ')[j], 16));
+                }
+
+                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+
+
+                for (int j = 0; j <= 50; j++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = TcpClient_Reader.Available;
+
+                if (int_Net_Available > 0)
+                {
+                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+
+                    String str_hex = "";
+                    double double_Mpa = 0;
+
+                    str_hex = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
+
+                    int[] eight = new int[str_hex.Length];
+
+                    for (int j = 0; j < eight.Length; j = j + 4)
+                    {
+                        eight[j / 4] = Convert.ToInt32(str_hex.Substring(j, 4), 16);
+                        //感測值結果
+                        double mA = Convert.ToDouble(eight[0]) * 20 / 4095;
+
+                        double_Mpa = mA * 0.92;
+                    }
+
+                    double_Mpa = Math.Round(double_Mpa, 1);
+
+                    String_ReData[index] = "水阻值 (" + double_Mpa.ToString() + ")";
+                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                }
+                else
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[5];
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                if (ex.Source != null)
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                    String_SQLcommand = "";
+                    String_SQLcommand_old = "";
+
+                    Console.WriteLine("M0312:Exception source: {0}", ex.Source);
+                }
+            }
+        }
+        #endregion
 
         #endregion
 

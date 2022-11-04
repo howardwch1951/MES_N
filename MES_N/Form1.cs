@@ -37,7 +37,6 @@ namespace MES_N
 
         public List<DataGridView> dgvLog = new List<DataGridView>();
         private delegate void InvokeDelegate();
-        bool canInsertDayno;
         private void Form1_Load(object sender, EventArgs e)
         {
             this.SetStyle(
@@ -47,10 +46,15 @@ namespace MES_N
 
             this.Size = new Size(1290, 682);
 
-            if (MPU.GetFileData("./Config", "config.txt")[0] == "true")
-                canInsertDayno = true;
+            if (MPU.GetFileData("./Config", "config.txt")[0].Split(',')[0] == "true")
+                MPU.canInsertDayno = true;
             else
-                canInsertDayno = false;
+                MPU.canInsertDayno = false;
+
+            if (MPU.GetFileData("./Config", "config.txt")[0].Split(',')[1] == "true")
+                MPU.canInsertToDB = true;
+            else
+                MPU.canInsertToDB = false;
 
             DirectoryInfo info = new DirectoryInfo(System.Environment.CurrentDirectory);
             string strFolderName = info.Name;//獲取當前路徑最後一級資料夾名稱
@@ -809,7 +813,7 @@ namespace MES_N
                         }
 
                         // 若config.txt參數為true時，才將DNO寫入tb_dayno資料表，若為false則不寫入
-                        if (canInsertDayno)
+                        if (MPU.canInsertDayno)
                         {
                             // 整點時紀錄最新DNO
                             if (DateTime.Now.ToString("mm") == "00" && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != string_dno)
