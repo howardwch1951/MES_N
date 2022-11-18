@@ -47,6 +47,7 @@ namespace MES_N
         public string str_BarcodeLight = "";
         public System.Net.Sockets.NetworkStream NetworkStream_Reader;
         public System.Net.Sockets.TcpClient TcpClient_Reader;
+        public Socket clientSocket;
 
         byte[] Byte_Command_Sent_082 = new byte[8];
         byte[] Byte_Command_Sent_083 = new byte[9];
@@ -70,84 +71,175 @@ namespace MES_N
         }
 
         //以防其他執行緒未完成，專門為TCP連結用
-        Boolean bool_tcpclientconnect_Action = false;
+        Boolean bool_passive = false;
+        private delegate string ConnectSocketDelegate(IPEndPoint ipep, Socket sock);
         /// <summary>
         /// 與網路盒建立連結
         /// </summary>
-        public void TcpClientConnect()
+        public void SocketClientConnect()
         {
-            if (bool_tcpclientconnect_Action == false && bool_AutoRun == true)
+            if (bool_passive == false && bool_AutoRun == true)
             {
-                bool_tcpclientconnect_Action = true;
+                bool_passive = true;
 
-                //宣告tcp連接 
-                byte[] Bytes_IP = new byte[4];
-                for (int i = 0; i <= 3; i++)
+                // 關閉自己的連線
+                if (clientSocket != null)
                 {
-                    Bytes_IP[i] = Convert.ToByte(String_DIP.TrimEnd(' ').Split('.')[i]);
+                    try
+                    {
+                        clientSocket.Shutdown(SocketShutdown.Both);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("[SocketClientConnect] Socket斷線失敗");
+                    }
+                    clientSocket.Close();
+                    clientSocket = null;
                 }
 
-                try
+                IPEndPoint ipep = new IPEndPoint(IPAddress.Parse(String_DIP.TrimEnd(' ')), Convert.ToInt32(String_Port));//IP和端口
+                clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+                ConnectSocketDelegate connect = ConnectSocket;
+                IAsyncResult asyncResult = connect.BeginInvoke(ipep, clientSocket, null, null);
+
+                bool connectSuccess = asyncResult.AsyncWaitHandle.WaitOne(500, false);
+                if (!connectSuccess)
                 {
-                    if (TcpClient_Reader != null)
-                    {
-                        TcpClient_Reader.Close();
-                        TcpClient_Reader = null;
-                        Thread.Sleep(100);
-                    }
-
-                    TcpClient_Reader = TimeOutSocket.Connect(new System.Net.IPEndPoint(new System.Net.IPAddress(Bytes_IP), Convert.ToInt16(String_Port)), 500);
-
-                    //
-                    if (!(TcpClient_Reader == null) && TcpClient_Reader.Connected)
-                    {
-                        //連結成功
-                        NetworkStream_Reader = TcpClient_Reader.GetStream();
-
-                        TcpClient_Reader.ReceiveTimeout = 100;
-
-                        TcpClient_Reader.SendTimeout = 100;
-
-                        TcpClient_Reader.ReceiveTimeout = 100;
-
-                        TcpClient_Reader.SendTimeout = 100;
-
-                        NetworkStream_Reader.WriteTimeout = 100;
-
-                        NetworkStream_Reader.ReadTimeout = 100;
-
-                        //Int_GetCount = 0;
-
-                        TcpClient_Reader.ReceiveBufferSize = 1024;
-
-                        //成功啟動後，把執行緒休息時間改為設計值
-                        int_ReaderSleep = int_ReaderSleepSET;
-
-                        CommandSet();
-
-                        Console.WriteLine($"連線成功!!");
-                    }
-                }
-                catch (Exception EX)
-                {
-                    Console.WriteLine($"連線失敗");
-
-                    if (EX.Source != null)
-                    {
-                        Console.WriteLine("M0091:Exception source: {0}", String_DIP + "[" + EX.Message + "]");
-
-                        if (EX.Message == "TimeOut Exception (TimeOutSocket-0040)")
-                        {
-                            //初此啟動之後，把此執行緒休息時間延長至10秒
-                            int_ReaderSleep = 10000;
-                            //System.Threading.Thread.Sleep(10000);
-                        }
-                    }
+                    Console.WriteLine($"[SocketClientConnect] {String_DIP}:{String_Port} 連線失敗！");
 
                 }
+                else
+                {
+                    clientSocket.ReceiveTimeout = 500;
+                    clientSocket.SendTimeout = 500;
+                    CommandSet();
+                    int_ReconnectWait = 0;
+                    Console.WriteLine($"[SocketClientConnect] {String_DIP}:{String_Port} 連線成功");
+                }
 
-                bool_tcpclientconnect_Action = false;
+                //設定伺服器IP地址
+                //IPAddress ip = IPAddress.Parse(String_DIP);
+
+                //clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                //clientSocket.SetSocketOption(SocketOptionLevel.Socket,
+                //SocketOptionName.ReceiveTimeout,
+                //500
+                //);
+                //try
+                //{
+                //    clientSocket.Connect(new IPEndPoint(ip, Convert.ToInt32(String_Port))); //配置伺服器IP與埠
+                //    clientSocket.ReceiveTimeout = 500;
+                //    clientSocket.SendTimeout = 500;
+                //    CommandSet();
+                //    Console.WriteLine("[SocketClientConnect] 連線伺服器成功");
+                //}
+                //catch (Exception ex)
+                //{
+                //    Console.WriteLine("[SocketClientConnect] 連線伺服器失敗！");
+                //}
+
+
+                #region 舊的
+                ////宣告tcp連接 
+                //byte[] Bytes_IP = new byte[4];
+                //for (int i = 0; i <= 3; i++)
+                //{
+                //    Bytes_IP[i] = Convert.ToByte(String_DIP.TrimEnd(' ').Split('.')[i]);
+                //}
+
+                //try
+                //{
+                //    if (TcpClient_Reader != null)
+                //    {
+                //        TcpClient_Reader.Close();
+                //        TcpClient_Reader = null;
+                //        Thread.Sleep(100);
+                //    }
+
+                //    if (NetworkStream_Reader != null)
+                //    {
+                //        NetworkStream_Reader.Close();
+                //        NetworkStream_Reader = null;
+                //        Thread.Sleep(100);
+                //    }
+
+                //    TcpClient_Reader = TimeOutSocket.Connect(new System.Net.IPEndPoint(new System.Net.IPAddress(Bytes_IP), Convert.ToInt16(String_Port)), 500);
+
+                //    Thread.Sleep(100);
+                //    //
+                //    if (!(TcpClient_Reader == null) && TcpClient_Reader.Connected)
+                //    {
+                //        //連結成功
+                //        NetworkStream_Reader = TcpClient_Reader.GetStream();
+                //        if (NetworkStream_Reader == null)
+                //        {
+                //            string ss = "";
+                //        }
+
+                //        TcpClient_Reader.ReceiveTimeout = 100;
+
+                //        TcpClient_Reader.SendTimeout = 100;
+
+                //        TcpClient_Reader.ReceiveTimeout = 100;
+
+                //        TcpClient_Reader.SendTimeout = 100;
+
+                //        NetworkStream_Reader.WriteTimeout = 100;
+
+                //        NetworkStream_Reader.ReadTimeout = 100;
+
+                //        //Int_GetCount = 0;
+
+                //        TcpClient_Reader.ReceiveBufferSize = 1024;
+
+                //        //成功啟動後，把執行緒休息時間改為設計值
+                //        int_ReaderSleep = int_ReaderSleepSET;
+
+                //        CommandSet();
+
+                //        Console.WriteLine($"連線成功");
+                //    }
+                //}
+                //catch (Exception EX)
+                //{
+                //    Console.WriteLine($"連線失敗");
+
+                //    if (EX.Source != null)
+                //    {
+                //        Console.WriteLine("M0091:Exception source: {0}", String_DIP + "[" + EX.Message + "]");
+
+                //        if (EX.Message == "TimeOut Exception (TimeOutSocket-0040)")
+                //        {
+                //            //初此啟動之後，把此執行緒休息時間延長至10秒
+                //            int_ReaderSleep = 1000;
+                //            //System.Threading.Thread.Sleep(10000);
+                //        }
+                //    }
+
+                //}
+                #endregion
+
+                bool_passive = false;
             }
+        }
+
+        private string ConnectSocket(IPEndPoint ipep, Socket sock)
+        {
+            string exmessage = "";
+            try
+            {
+                sock.Connect(ipep);
+            }
+            catch (System.Exception ex)
+            {
+                exmessage = ex.Message;
+            }
+            finally
+            {
+            }
+
+            return exmessage;
         }
 
         //製作一個boolean 代表只有單一個動作在執行
@@ -157,35 +249,34 @@ namespace MES_N
 
         public bool bool_reconnect = true;
         bool isConnect = false;
+        bool isAlarmExist = false;
 
-        int int_Reconnect = 0;
+        int int_ReconnectWait = 0;
         int F11_port = 0;
         int F15_port = 0;
-        string strSQLRumTime = "";
+        int millisecond = 1000;
 
-        StringBuilder sbSQL = new StringBuilder();
+        DateTime NextSQLRumTime = new DateTime();
+        //string strSQLRumTime = "";
+        string strPcReceive = "";
 
+        public StringBuilder sbSQL = new StringBuilder();
+        List<int> intConnectTimes = new List<int>();
         private delegate void InvokeDelegate();
         //執行緒主要執行區塊
         public void MesNetSiteRunning()
         {
-            // String_TID = "111";
+            for (int i = 0; i < dicDeviceList[String_Port].Count; i++)
+            {
+                intConnectTimes.Add(0);
+            }
+
+            SocketClientConnect();
+
             while (bool_AutoRun)
             {
                 try
                 {
-                    //byte[] testRecByte = new byte[1];
-                    ////使用Peek，測試client是否還有連線
-                    //if (!(TcpClient_Reader != null && TcpClient_Reader.Connected))
-                    //{
-                    //    if (int_Reconnect > 10)
-                    //    {
-                    //        int_Reconnect = 0;
-                    //        TcpClientConnect();
-                    //    }
-                    //    int_Reconnect++;
-                    //}
-
                     //161208 加入判斷tcpclient是否在連結中，如果在連結中就不要做其他動作。
                     if (boolMESnetISrun == false)
                     {
@@ -194,6 +285,7 @@ namespace MES_N
                         // 清除舊的SQL語法
                         sbSQL.Clear();
                         String_SQLcommand = "";
+                        strPcReceive = "";
 
                         Array.Resize(ref String_ReData, Convert.ToInt32(dicDeviceList[String_Port].Count));
                         Array.Resize(ref FirstRec, Convert.ToInt32(dicDeviceList[String_Port].Count));
@@ -211,7 +303,7 @@ namespace MES_N
 
                                 //連結成功才動作
                                 //if ((TcpClient_Reader != null) && TcpClient_Reader.Connected)
-                                if ((TcpClient_Reader != null) && TcpClient_Reader.Connected)
+                                if (clientSocket != null && !clientSocket.Poll(1, SelectMode.SelectRead) && clientSocket.Connected == true)
                                 {
                                     switch (dicDeviceList[String_Port][i].Split(';')[0].Split('_')[0])
                                     {
@@ -220,9 +312,6 @@ namespace MES_N
                                             break;
                                         case "2": //條碼
                                             function_02();
-                                            break;
-                                        case "3": //控制燈號模組
-                                            function_WLS_LCS();
                                             break;
                                         case "4":
                                             function_DTS();
@@ -316,30 +405,26 @@ namespace MES_N
                                             break;
                                         case "34": //清洗機水阻值
                                             function_34();
-                                            break;
+                                            break;                                           
                                         default:
                                             //SetStatus();
-                                            break;
+                                            break;                                            
                                     }
                                 }
                                 else
                                 {
                                     switch (dicDeviceList[String_Port][i].Split(';')[0].Split('_')[0])
                                     {
+                                        case "3": //控制燈號模組
+                                            function_WLS_LCS();
+                                            break;
                                         case "26": //只PING設備IP，連線成功就回傳黃燈
                                             function_26_PingIP();
                                             break;
                                         case "31": //廠務設備 比電阻
                                             function_RESOHM();
                                             break;
-                                        default: //TCPclient連線失敗
-                                                 //String_ReData[index] = MPU.str_ErrorMessage[1];
-                                                 //if (bool_reconnect)
-                                                 //{
-                                                 //    bool_reconnect = false;
-                                                 //    new Thread(Reconnect).Start();
-                                                 //}
-                                            String_ReData[index] = MPU.str_ErrorMessage[1];
+                                        default:
                                             break;
                                     }
                                 }
@@ -349,114 +434,113 @@ namespace MES_N
                                 if (EXnull.Source != null)
                                 {
                                     Console.WriteLine("M0182:空值處理，重新連線[" + String_DIP + "] Exception source: {0}", EXnull.Source + ":" + EXnull.Message);
-                                    String_ReData[index] = MPU.str_ErrorMessage[1];
-                                    //if (bool_reconnect)
-                                    //{
-                                    //    bool_reconnect = false;
-                                    //    new Thread(Reconnect).Start();
-                                    //}
-                                    String_ReData[index] = MPU.str_ErrorMessage[1];
+
+                                    if (TcpClient_Reader != null)
+                                    {
+                                        TcpClient_Reader.Close();
+                                        TcpClient_Reader = null;
+                                        Thread.Sleep(100);
+                                    }
+
+                                    if (NetworkStream_Reader != null)
+                                    {
+                                        NetworkStream_Reader.Close();
+                                        NetworkStream_Reader = null;
+                                        Thread.Sleep(100);
+                                    }
                                 }
                             }
                             catch (Exception ex)
                             {
-                                String_ReData[index] = MPU.str_ErrorMessage[1];
                                 if (ex.Source != null)
                                 {
                                     Console.WriteLine("M0192:Exception source: {0}", ex.Source + ":" + ex.Message);
                                 }
 
-                                //if (bool_reconnect)
-                                //{
-                                //    bool_reconnect = false;
-                                //    new Thread(Reconnect).Start();
-                                //}
-                                String_ReData[index] = MPU.str_ErrorMessage[1];
-                            }
-
-                            #region 舊的
-                            if (bool_AutoRun && MPU.Ethernet)
-                            {
-                                if (!string.IsNullOrEmpty(MPU.dic_ReceiveMessage[int_ThreadNum + index]))
+                                if (TcpClient_Reader != null)
                                 {
-                                    // 如果狀態出現連線失敗或catch的錯誤訊息
-                                    if (MPU.dic_ReceiveMessage[int_ThreadNum + index].Contains(MPU.str_ErrorMessage[0])
-                                        || MPU.dic_ReceiveMessage[int_ThreadNum + index].Contains(MPU.str_ErrorMessage[1]))
-                                    {
-                                        // IF判斷如果不存在斷線紀錄
-                                        sbSQL.AppendFormat(@"IF NOT EXISTS (SELECT * FROM tb_connectlog 
-                                                            WHERE 
-                                                            SID = '{2}' and 
-                                                            CONTIME IS NULL)",
-                                                            String_DIP, String_Address, String_SID, String_NOTE);
-                                        sbSQL.AppendLine();
+                                    TcpClient_Reader.Close();
+                                    TcpClient_Reader = null;
+                                    Thread.Sleep(100);
+                                }
 
-                                        // 新增斷線紀錄
-                                        sbSQL.Append("  INSERT INTO ");
-                                        sbSQL.AppendFormat(@"tb_connectlog (DIP, ADDRESS, SID, DVALUE, DISTIME, SYSTIME) 
-                                                            VALUES ('{0}', {1}, '{2}', '{3}', '{4}', '{5}')",
-                                                            String_DIP, String_Address, String_SID, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                                        sbSQL.AppendLine();
-                                    }
-
-                                    //  如果狀態不存在任何錯誤訊息，代表正常連線
-                                    if (!MPU.str_ErrorMessage.Contains(MPU.dic_ReceiveMessage[int_ThreadNum + index]))
-                                    {
-                                        // IF判斷如果存在斷線紀錄，且沒有重新連線紀錄
-                                        sbSQL.AppendFormat(@"IF EXISTS (SELECT * FROM tb_connectlog 
-                                                                WHERE  
-                                                                SID = '{2}' and 
-                                                                CONTIME IS NULL)",
-                                                                String_DIP, String_Address, String_SID, String_NOTE);
-                                        sbSQL.AppendLine();
-
-                                        // 更新原本斷線紀錄，將連線時間更新上去
-                                        sbSQL.Append("  UPDATE ");
-                                        sbSQL.AppendFormat(@"tb_connectlog SET CONTIME = '{0}' 
-                                                                WHERE  
-                                                                SID = '{3}' and  
-                                                                CONTIME IS NULL",
-                                                            DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_SID, String_NOTE);
-                                        sbSQL.AppendLine();
-                                    }
+                                if (NetworkStream_Reader != null)
+                                {
+                                    NetworkStream_Reader.Close();
+                                    NetworkStream_Reader = null;
+                                    Thread.Sleep(100);
                                 }
                             }
-                            #endregion
 
                             if (bool_AutoRun)
                             {
-                                if (TcpClient_Reader == null || !TcpClient_Reader.Connected)
-                                {
-                                    // IF判斷如果不存在斷線紀錄
-                                    sbSQL.AppendFormat(@"IF NOT EXISTS (SELECT * FROM tb_connectlog 
-                                                        WHERE SID = '{0}' and CONTIME IS NULL)",
-                                                        String_SID);
-                                    sbSQL.AppendLine();
+                                //DataTable dt = new DataTable();
+                                //if (isAlarmExist == false && clientSocket != null && !((!(clientSocket.Poll(1, SelectMode.SelectRead) && clientSocket.Available == 0)) && clientSocket.Connected == true))
+                                //{
+                                //    isAlarmExist = true;
+                                //    // IF判斷如果不存在斷線紀錄
+                                //    //dt = ReadSQLToDT($"SELECT * FROM tb_connectlog WHERE SID = '{String_SID}' and CONTIME IS NULL");
 
-                                    // 新增斷線紀錄
-                                    sbSQL.Append("  INSERT INTO ");
-                                    sbSQL.AppendFormat(@"tb_connectlog (DIP, ADDRESS, SID, DVALUE, DISTIME, SYSTIME) 
-                                                            VALUES ('{0}', {1}, '{2}', '{3}', '{4}', '{5}')",
-                                                        String_DIP, String_Address, String_SID, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                                    sbSQL.AppendLine();
-                                }
-                                else
-                                {
-                                    // IF判斷如果存在斷線紀錄，且沒有重新連線紀錄
-                                    sbSQL.AppendFormat(@"IF EXISTS (SELECT * FROM tb_connectlog 
-                                                        WHERE SID = '{2}' and CONTIME IS NULL)",
-                                                            String_DIP, String_Address, String_SID, String_NOTE);
-                                    sbSQL.AppendLine();
+                                //    sbSQL.AppendFormat(@"BEGIN TRAN
+                                //                            IF NOT EXISTS (SELECT * FROM tb_connectlog 
+                                //                            WHERE SID = '{0}' and CONTIME IS NULL)",
+                                //                            String_SID);
+                                //    sbSQL.AppendLine();
 
-                                    // 更新原本斷線紀錄，將連線時間更新上去
-                                    sbSQL.Append("  UPDATE ");
-                                    sbSQL.AppendFormat(@"tb_connectlog SET CONTIME = '{0}' 
-                                                                WHERE  
-                                                                SID = '{3}' and  
-                                                                CONTIME IS NULL",
-                                                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_DIP, String_Address, String_SID, String_NOTE);
-                                    sbSQL.AppendLine();
-                                }
+                                //    // 新增斷線紀錄
+                                //    //if (dt.Rows.Count > 0)
+                                //    //{
+                                //    //    sbSQL.Append("  INSERT INTO ");
+                                //    //    sbSQL.AppendFormat(@"tb_connectlog (DIP, ADDRESS, SID, DVALUE, DISTIME, SYSTIME) 
+                                //    //                        VALUES ('{0}', {1}, '{2}', '{3}', '{4}', '{5}')",
+                                //    //                        String_DIP, String_Address, String_SID, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                                //    //    sbSQL.AppendLine();
+                                //    //}
+                                //    sbSQL.Append("  INSERT INTO ");
+                                //    sbSQL.AppendFormat(@"tb_connectlog (DIP, ADDRESS, SID, DVALUE, DISTIME, SYSTIME) 
+                                //                            VALUES ('{0}', {1}, '{2}', '{3}', '{4}', '{5}')
+                                //                        IF(@@ERROR<>0)
+	                               //                         ROLLBACK TRAN;
+                                //                        ELSE
+	                               //                         COMMIT TRAN;",
+                                //                        String_DIP, String_Address, String_SID, String_NOTE, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                                //    sbSQL.AppendLine();
+                                //}
+                                //else
+                                //{
+                                //    isAlarmExist = false;
+                                //    // IF判斷如果存在斷線紀錄，且沒有重新連線紀錄
+                                //    //dt = ReadSQLToDT($"SELECT * FROM tb_connectlog WHERE SID = '{String_SID}' and CONTIME IS NULL");
+
+                                //    sbSQL.AppendFormat(@"BEGIN TRAN
+                                //                            IF EXISTS (SELECT * FROM tb_connectlog 
+                                //                            WHERE SID = '{0}' and CONTIME IS NULL)",
+                                //                                String_SID);
+                                //    sbSQL.AppendLine();
+
+                                //    // 更新原本斷線紀錄，將連線時間更新上去
+                                //    //if (dt.Rows.Count > 0)
+                                //    //{
+                                //    //    sbSQL.Append("  UPDATE ");
+                                //    //    sbSQL.AppendFormat(@"tb_connectlog SET CONTIME = '{0}' 
+                                //    //                            WHERE  
+                                //    //                            SID = '{1}' and  
+                                //    //                            CONTIME IS NULL",
+                                //    //                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_SID);
+                                //    //    sbSQL.AppendLine();
+                                //    //}
+                                //    sbSQL.Append("  UPDATE ");
+                                //    sbSQL.AppendFormat(@"tb_connectlog SET CONTIME = '{0}' 
+                                //                                WHERE  
+                                //                                SID = '{1}' and  
+                                //                                CONTIME IS NULL
+                                //                        IF(@@ERROR<>0)
+	                               //                         ROLLBACK TRAN;
+                                //                        ELSE
+	                               //                         COMMIT TRAN;",
+                                //                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), String_SID);
+                                //    sbSQL.AppendLine();
+                                //}
                             }
 
                             // 刷新設備狀態
@@ -465,42 +549,129 @@ namespace MES_N
                             if (String_SQLcommand == ";")
                                 String_SQLcommand = "";
 
-                            // 每分鐘回寫資料庫
-                            if (MPU.canInsertToDB && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
-                            {
-                                strSQLRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                            sbSQL.AppendLine(String_SQLcommand);
+                            sbSQL.AppendLine();
 
-                                sbSQL.AppendLine(String_SQLcommand);
-                                if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
-                                    MPU.ReadSQL(sbSQL.ToString());
-                            }
-
-
-                            //if (!string.IsNullOrWhiteSpace(String_SQLcommand_old))
-                            //    MPU.ReadSQL_old(String_SQLcommand_old);
-
-                            //System.Threading.Thread.Sleep(int_ReaderSleep / dicDeviceList[String_Port].Count);
+                            System.Threading.Thread.Sleep(int_ReaderSleep / dicDeviceList[String_Port].Count);
                         }
 
-                        if ((TcpClient_Reader == null) || !TcpClient_Reader.Connected)
+                        //回寫資料庫&重新連線
+                        switch (dicDeviceList[String_Port][index].Split(';')[0].Split('_')[0])
                         {
-                            //TCPclient連線失敗
-                            if (bool_AutoRun && bool_reconnect)
-                            {
-                                bool_reconnect = false;
-                                new Thread(Reconnect).Start();
-                            }
+                            case "3": //控制燈號模組
+                                #region 無法用Socket.Poll判斷連線
+                                if (clientSocket == null || clientSocket.Connected == false)
+                                {
+                                    //TCPclient連線失敗
+                                    if (int_ReconnectWait >= 5)
+                                    {
+                                        int_ReconnectWait = 0;
+                                        SocketClientConnect();
+
+                                        //bool_reconnect = false;
+                                        //new Thread(Reconnect).Start();
+                                    }
+
+                                    int_ReconnectWait++;
+                                }
+                                else
+                                {
+                                    // 每分鐘回寫資料庫
+                                    if (MPU.canInsertToDB && DateTime.Now >= NextSQLRumTime)
+                                    {
+                                        NextSQLRumTime = DateTime.Now.AddMinutes(1);
+
+                                        if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                                        {
+                                            if (Check_Connection.CheckConnaction())
+                                            {
+                                                MPU.ReadSQL(sbSQL.ToString());
+                                            }
+                                            else
+                                            {
+                                                MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
+                                            }
+                                        }
+                                    }
+                                }
+                                #endregion
+                                break;
+                            case "26": //只PING設備IP，連線成功就回傳黃燈
+                            case "31": //廠務設備 比電阻
+                                #region 無須建立連線
+                                // 每分鐘回寫資料庫
+                                if (MPU.canInsertToDB && DateTime.Now >= NextSQLRumTime)
+                                {
+                                    NextSQLRumTime = DateTime.Now.AddMinutes(1);
+
+                                    if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                                    {
+                                        if (Check_Connection.CheckConnaction())
+                                        {
+                                            MPU.ReadSQL(sbSQL.ToString());
+                                        }
+                                        else
+                                        {
+                                            MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
+                                        }
+                                    }
+                                }
+                                #endregion
+                                break;
+                            default:
+                                #region 可以用Socket.Poll判斷連線
+                                if (clientSocket == null || clientSocket.Poll(1, SelectMode.SelectRead) || clientSocket.Connected == false)
+                                {
+                                    //TCPclient連線失敗
+                                    if (int_ReconnectWait >= 5)
+                                    {
+                                        int_ReconnectWait = 0;
+                                        SocketClientConnect();
+
+                                        //bool_reconnect = false;
+                                        //new Thread(Reconnect).Start();
+                                    }
+
+                                    int_ReconnectWait++;
+                                }
+                                else
+                                {
+                                    // 每分鐘回寫資料庫
+                                    if (MPU.canInsertToDB && DateTime.Now >= NextSQLRumTime)
+                                    {
+                                        NextSQLRumTime = DateTime.Now.AddMinutes(1);
+
+                                        if(!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                                        {
+                                            if (Check_Connection.CheckConnaction())
+                                            {
+                                                MPU.ReadSQL(sbSQL.ToString());
+                                            }
+                                            else
+                                            {
+                                                MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
+                                            }
+                                        }
+                                    }
+                                }
+                                #endregion
+                                break;
                         }
+
+                        
+
+                        boolMESnetISrun = false;
                     }
-
-                    boolMESnetISrun = false;
-
-                    System.Threading.Thread.Sleep(int_ReaderSleep);
+                    
+                    Thread.Sleep(500);
                 }
                 catch (Exception ex)
                 {
-                    MPU.WriteErrorCode("", "[MesNetSiteRunning] " + ex.Message);
-                    Console.WriteLine("[MesNetSiteRunning] " + ex.Message);
+                    if (ex.Message != "執行緒已經中止。")
+                    {
+                        MPU.WriteErrorCode("", "[MesNetSiteRunning] " + ex.Message);
+                        Console.WriteLine("[MesNetSiteRunning] " + ex.Message);
+                    }
                 }
             } 
         }
@@ -509,20 +680,20 @@ namespace MES_N
         {
             while (!bool_reconnect)
             {
-                int_Reconnect++;
-                Console.WriteLine($"等待重新連線 ({int_Reconnect})");
+                int_ReconnectWait++;
+                Console.WriteLine($"等待重新連線 ({int_ReconnectWait})");
                 try
                 {
-                    if (int_Reconnect >= 5)
+                    if (int_ReconnectWait >= 5)
                     {
                         Console.WriteLine($"正在重新連線...");
-                        int_Reconnect = 0;
+                        int_ReconnectWait = 0;
                         //if (TcpClient_Reader != null)
                         //{
                         //    TcpClient_Reader.Close();
                         //    TcpClient_Reader = null;
                         //}
-                        TcpClientConnect();
+                        SocketClientConnect();
                         bool_reconnect = true;
 
                     }
@@ -538,47 +709,186 @@ namespace MES_N
 
         bool bool_firstrun = true;
         List<int> int_connecting = new List<int>();
-        private static readonly object D_Lock = new object();
         private void SetStatus()
         {
             try
             {
-                if (String_ReData[index] != null)
-                {
-                    if (String_ReData[index].Contains(MPU.str_ErrorMessage[3]) || String_ReData[index] == "")
-                    {
-                        if (bool_firstrun)
-                        {
-                            for (int i = 0; i < Convert.ToInt32(dicDeviceList[String_Port].Count); i++)
-                            {
-                                int_connecting.Add(0);
-                            }
-                            bool_firstrun = false;
-                        }
+                if (String_ReData[index] == null)
+                    String_ReData[index] = MPU.str_ErrorMessage[3];
 
-                        if (int_connecting[index] >= 10)
-                        {
-                            String_ReData[index] = MPU.str_ErrorMessage[1];
-                            int_connecting[index] = 0;
-                        }
-                        else
-                        {
-                            int_connecting[index]++;
-                        }
+                if (String_ReData[index].Contains(MPU.str_ErrorMessage[0]))
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[1];
+                }
+                else if (string.IsNullOrWhiteSpace(String_ReData[index]))
+                {
+                    String_ReData[index] = MPU.str_ErrorMessage[2];
+                }
+                else if(String_ReData[index].Contains(MPU.str_ErrorMessage[3]))
+                {
+                    if (intConnectTimes[index] >= 6)
+                    {
+                        String_ReData[index] = MPU.str_ErrorMessage[1];
+                    }
+                    else
+                    {
+                        intConnectTimes[index]++;
                     }
                 }
-                else
-                    String_ReData[index] = MPU.str_ErrorMessage[1];
+                else 
+                {
+                    switch (dicDeviceList[String_Port][index].Split(';')[0].Split('_')[0])
+                    {
+                        case "3": //控制燈號模組
+                            if (clientSocket == null || clientSocket.Connected == false)
+                            {
+                                for (int i = 0; i < dicDeviceList[String_Port].Count; i++)
+                                {
+                                    if (int_ReconnectWait >= 5)
+                                        String_ReData[i] = MPU.str_ErrorMessage[6];
+                                    else
+                                        String_ReData[i] = $"{MPU.str_ErrorMessage[1]}({int_ReconnectWait})";
+                                }
+                            }
+                            break;
+                        case "26": //只PING設備IP，連線成功就回傳黃燈
+                        case "31": //廠務設備 比電阻                            
+                            break;
+                        default:
+                            if (clientSocket == null || clientSocket.Poll(1, SelectMode.SelectRead) || clientSocket.Connected == false)
+                            {
+                                for (int i = 0; i < dicDeviceList[String_Port].Count; i++)
+                                {
+                                    if (int_ReconnectWait >= 5)
+                                        String_ReData[i] = MPU.str_ErrorMessage[6];
+                                    else
+                                        String_ReData[i] = $"{MPU.str_ErrorMessage[1]}({int_ReconnectWait})";
+                                }
+                            }
+                            break;
+                    }
+                }
+
 
                 if (String_ReData[index] != null)
                     MPU.dic_ReceiveMessage.AddOrUpdate(int_ThreadNum + index, String_ReData[index], (k, v) => String_ReData[index]);
             }
             catch (Exception ex)
             {
-                MPU.WriteErrorCode("", "[MesNetSite SetStatus] " + ex.StackTrace);
-                Console.WriteLine("[MesNetSite SetStatus] " + ex.StackTrace);
+                MPU.WriteErrorCode("", "[MesNetSite SetStatus] " + ex.Message);
+                Console.WriteLine("[MesNetSite SetStatus] " + ex.Message);
             }
         }
+
+        private readonly object D_Lock = new object();
+        #region SQL
+
+        #region 讀取SQL-MES暫存資料庫(dbMES_temp)
+        /// <summary>
+        /// 讀取SQL(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        public void ReadSQL_dbMEStemp(string pSQL)
+        {
+            try
+            {
+                using (SqlConnection conn = new SqlConnection(MPU.conStr_dbMEStemp))
+                {
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = 3;
+                    cmd.ExecuteNonQuery();
+                    cmd.Cancel();
+                    conn.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+        #endregion        
+
+        #region 讀取SQL
+        /// <summary>
+        /// 讀取SQL(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        public void ReadSQL(string pSQL)
+        {
+            try
+            {
+                using (SqlConnection conn = new SqlConnection(MPU.conStr))
+                {
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = 5;
+                    cmd.ExecuteNonQuery();
+                    cmd.Cancel();
+                    conn.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                Thread.Sleep(1000);
+                ReReadSQL(pSQL);
+                throw ex;
+            }
+        }
+
+        public void ReReadSQL(string pSQL)
+        {
+            try
+            {
+                using (SqlConnection conn = new SqlConnection(MPU.conStr))
+                {
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = 5;
+                    cmd.ExecuteNonQuery();
+                    cmd.Cancel();
+                    conn.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
+                if (!pSQL.Contains("tb_connectlog"))
+                    ReadSQL_dbMEStemp(pSQL);
+                throw ex;
+            }
+        }
+        #endregion        
+
+        #region 讀取SQL回傳DataTable
+        /// <summary>
+        /// 讀取SQL回傳DataTable(請確認SQL指令是否正確)
+        /// </summary>
+        /// <param name="pSQL">SQL指令</param>
+        private  DataTable ReadSQLToDT(string pSQL, int timeout = 3)
+        {
+            DataTable dtSource = new DataTable();
+            try
+            {
+                using (SqlConnection conn = new SqlConnection(MPU.conStr))
+                {
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = timeout;
+                    SqlDataAdapter adapter = new SqlDataAdapter(cmd);
+                    adapter.Fill(dtSource);
+                    cmd.Cancel();
+                    conn.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                
+            }
+            return dtSource;
+        }
+        #endregion
+        #endregion  
 
         #region 計算CRC檢查碼
         /// <summary>
@@ -705,20 +1015,22 @@ namespace MES_N
                 {
                     Byte_Command_Sent[i] = Convert.ToByte(String_SeData[1].Split(' ')[i], 16);
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData[1].Split(' ').Length);
-                for (int i = 0; i <= 50; i++)
+
+                clientSocket.Send(Byte_Command_Sent, 0, String_SeData[1].Split(' ').Length, System.Net.Sockets.SocketFlags.None);
+
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
-
-                NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available == 13)
                 {
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
+
                     string str_T = Convert.ToInt32(String.Format("{0:X2}", Byte_Command_Re[9]) + String.Format("{0:X2}", Byte_Command_Re[10]), 16).ToString().PadLeft(4, '0'); ;
 
                     string str_H = Convert.ToInt32(String.Format("{0:X2}", Byte_Command_Re[11]) + String.Format("{0:X2}", Byte_Command_Re[12]), 16).ToString().PadLeft(4, '0'); ;
@@ -752,19 +1064,18 @@ namespace MES_N
 
             try
             {
-
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
                 //有條碼時才動作。
 
                 //判斷是否有資料以及是否可以讀取，並且此連結資料通道可以抓取資料時才能動作。
 
-                if (int_Net_Available > 0 && NetworkStream_Reader.CanRead == true)
+                if (int_Net_Available > 0)
                 {
 
                     string str_T = "";
 
                     //抓取資料之後轉為字元
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     for (int j = 0; j <= int_Net_Available - 2; j++)
                     {
@@ -841,7 +1152,7 @@ namespace MES_N
                 else
                 {
                     //沒有資料仍要提示訊息
-                    String_ReData[index] = "Available[" + int_Net_Available + "]:[" + NetworkStream_Reader.CanRead.ToString() + "]@無資料:" + String_Sclass;
+                    String_ReData[index] = "Available[" + int_Net_Available + "]@無資料:" + String_Sclass;
 
                     //沒有資料的時候丟個資料過去不要讓他斷線
 
@@ -853,7 +1164,7 @@ namespace MES_N
                     byte_Command_wlslcs[3] = 10;
                     byte_Command_wlslcs[4] = 13;
 
-                    NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                    clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
 
                     //INSERT 一筆
                     if (booleanInsert == true)
@@ -960,28 +1271,28 @@ namespace MES_N
                         byte_Command_wlslcs[2] = 49;
                         byte_Command_wlslcs[3] = 10;
                         byte_Command_wlslcs[4] = 13;
-                        NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                        clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
 
                         byte_Command_wlslcs[0] = 48;
                         byte_Command_wlslcs[1] = 53;
                         byte_Command_wlslcs[2] = 48;
                         byte_Command_wlslcs[3] = 10;
                         byte_Command_wlslcs[4] = 13;
-                        NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                        clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
 
                         byte_Command_wlslcs[0] = 48;
                         byte_Command_wlslcs[1] = 52;
                         byte_Command_wlslcs[2] = 49;
                         byte_Command_wlslcs[3] = 10;
                         byte_Command_wlslcs[4] = 13;
-                        NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                        clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
 
                         byte_Command_wlslcs[0] = 48;
                         byte_Command_wlslcs[1] = 51;
                         byte_Command_wlslcs[2] = 48;
                         byte_Command_wlslcs[3] = 10;
                         byte_Command_wlslcs[4] = 13;
-                        NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                        clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
                     }
 
                     str_BarcodeLight = "";
@@ -1011,17 +1322,17 @@ namespace MES_N
 
 
                 //取得目前網路盒的訊號資料量大小
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 //判斷是否有資料以及是否可以讀取。
-                if (int_Net_Available >= 10 && NetworkStream_Reader.CanRead == true)
+                if (int_Net_Available >= 10)
                 {
 
                     byte_function_03_loop_index = 0;
 
                     string str_T = "";
 
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, 10);
+                    clientSocket.Receive(Byte_Command_Re, 0, 10, SocketFlags.None);
 
                     for (int j = 0; j <= 10 - 2; j++)
                     {
@@ -1087,6 +1398,10 @@ namespace MES_N
                                 {
                                     str_T = "0010";
                                 }
+                                else
+                                {
+                                    str_T = "0010";
+                                }
                             }
                             else
                             {
@@ -1100,12 +1415,25 @@ namespace MES_N
                                 {
                                     str_T = "0010";
                                 }
+                                else
+                                {
+                                    str_T = "0010";
+                                }
+
                                 if (Str_lcs == "1100" || Str_lcs == "1110" || Str_lcs == "1101" || Str_lcs == "1111")
                                 {
                                     str_T = "0100";
                                 }
+                                else
+                                {
+                                    str_T = "0010";
+                                }
                             }
 
+                        }
+                        else
+                        {
+                            str_T = "0010";
                         }
 
                         //燈號結果處理完畢
@@ -1156,10 +1484,38 @@ namespace MES_N
                         }
                         else
                         {
-                            String_SQLcommand = "";
+                            if (String_Dline == "P2")
+                            {
+
+                                String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','0010','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+
+
+                            }
+                            else if (String_Dline == "P3")
+                            {
+                                String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','0010','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+
+                            }
+                            String_ReData[index] = int_Net_Available + "@0010:" + String_Sclass;
+                        }
+
+                    }
+                    else
+                    {
+                        if (String_Dline == "P2")
+                        {
+
+                            String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','0010','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+
+
+                        }
+                        else if (String_Dline == "P3")
+                        {
+                            String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','0010','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
 
                         }
 
+                        String_ReData[index] = int_Net_Available + "@0010:" + String_Sclass;
                     }
 
                 }
@@ -1175,66 +1531,83 @@ namespace MES_N
                     byte_Command_wlslcs[3] = 10;
                     byte_Command_wlslcs[4] = 13;
 
-                    NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                    clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
 
-                    for (int i = 0; i <= 50; i++)
+                    for (int i = 0; i < 50; i++)
                     {
-
-                        System.Threading.Thread.Sleep(5);
+                        System.Threading.Thread.Sleep(10);
 
                         System.Windows.Forms.Application.DoEvents();
-
                     }
 
-                    int int_Net_Availablexxx = TcpClient_Reader.Available;
+                    int int_Net_Availablexxx = clientSocket.Available;
 
                     //如果真的都沒有值回傳的話，再準備進行資料重連的動作。
                     if (int_Net_Availablexxx == 0)
                     {
 
-                        byte_function_03_loop_index += 1;
+                        //byte_function_03_loop_index += 1;
 
-                        String_ReData[index] = "<468>" + int_Net_Available + "@" + str_ttt + "，未解碼次數(" + byte_function_03_loop_index + "):" + String_Sclass;
+                        //String_ReData[index] = "<468>" + int_Net_Available + "@" + str_ttt + "，未解碼次數(" + byte_function_03_loop_index + "):" + String_Sclass;
 
-                        //當燈號解析超出10次沒有資料的時候，重新連線一次。
-                        if (byte_function_03_loop_index > 50)
-                        {
+                        ////當燈號解析超出10次沒有資料的時候，重新連線一次。
+                        //if (byte_function_03_loop_index > 50)
+                        //{
 
-                            //161208 加入一個共有變數，同一時間只能一個tcpip連線
-                            if (MPU.TOSrun == false)
-                            {
-                                MPU.TOSrun = true;
+                        //    //161208 加入一個共有變數，同一時間只能一個tcpip連線
+                        //    if (MPU.TOSrun == false)
+                        //    {
+                        //        MPU.TOSrun = true;
 
-                                byte_function_03_loop_index = 0;
+                        //        byte_function_03_loop_index = 0;
 
-                                str_ttt = "";
+                        //        str_ttt = "";
 
-                                NetworkStream_Reader.Close();
+                        //        //NetworkStream_Reader.Close();
 
-                                TcpClient_Reader.Close();
+                        //        //TcpClient_Reader.Close();
 
-                                //NetworkStream_Reader = null;
+                        //        //NetworkStream_Reader = null;
 
-                                //TcpClient_Reader = null;
+                        //        //TcpClient_Reader = null;
 
-                                for (int int_t = 0; int_t < 100; int_t++)
-                                {
+                        //        for (int int_t = 0; int_t < 100; int_t++)
+                        //        {
 
-                                    System.Windows.Forms.Application.DoEvents();
+                        //            System.Windows.Forms.Application.DoEvents();
 
-                                    System.Threading.Thread.Sleep(5);
+                        //            System.Threading.Thread.Sleep(5);
 
-                                }
+                        //        }
 
-                                //重新建立連結
-                                TcpClientConnect();
+                        //        //重新建立連結
+                        //        SocketClientConnect();
 
-                                MPU.TOSrun = false;
-                            }
-                        }
+                        //        MPU.TOSrun = false;
+                        //    }
+                        //}
+                    }
+                    else
+                    {
+                        clientSocket.Receive(Byte_Command_Re, 0, 10, SocketFlags.None);
+                    }
+
+
+
+                    if (String_Dline == "P2")
+                    {
+
+                        String_SQLcommand += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','0010','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+
+
+                    }
+                    else if (String_Dline == "P3")
+                    {
+                        String_SQLcommand += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','0010','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
 
                     }
 
+                    String_ReData[index] = int_Net_Available + "@0010:" + String_Sclass;
                 }
 
             }
@@ -1304,21 +1677,18 @@ namespace MES_N
                 }
 
                 //發送指令前先清完記憶體
+                clientSocket.Send(Byte_Command_Sent, 0, String_SeData05[1].Split(' ').Length, System.Net.Sockets.SocketFlags.None);
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData05[1].Split(' ').Length);
-
-                for (int i = 0; i <= 50; i++)
+                for (int i = 0; i < 50; i++)
                 {
-
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
-
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
-                // NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                // clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                 //按照位置抓取資料，空壓的都採電壓式， 
                 //例位置1 ，抓 第4+第5 加總為16進製 4字元， 轉換成 10進製後得 x
@@ -1332,7 +1702,7 @@ namespace MES_N
                 {
 
                     //一次只取21筆
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, 21);
+                    clientSocket.Receive(Byte_Command_Re, 0, 21, SocketFlags.None);
 
                     //判斷是否符合CRC
                     temCRC = crc16(Byte_Command_Re, 19);
@@ -1521,9 +1891,9 @@ namespace MES_N
                 }
 
                 //發送讀取指令。
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData05[1].Split(' ').Length);
+                clientSocket.Send(Byte_Command_Sent, 0, String_SeData05[1].Split(' ').Length, System.Net.Sockets.SocketFlags.None);
 
-                for (int i = 0; i <= 50; i++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
@@ -1531,9 +1901,9 @@ namespace MES_N
                 }
 
                 //取得回傳大小。
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
-                // NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                // clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                 //按照位置抓取資料，空壓的都採電壓式， 
                 //例位置1 ，抓 第4+第5 加總為16進製 4字元， 轉換成 10進製後得 x
@@ -1546,7 +1916,7 @@ namespace MES_N
                 {
                     String_SQLcommand = "";
                     //一次只取21筆
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, 21);
+                    clientSocket.Receive(Byte_Command_Re, 0, 21, SocketFlags.None);
 
                     //判斷是否符合CRC
                     temCRC = crc16(Byte_Command_Re, 19);
@@ -1803,16 +2173,16 @@ namespace MES_N
                     Byte_Command_Sent[i] = Convert.ToByte(String_SeData05[1].Split(' ')[i], 16);
                 }
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData05[1].Split(' ').Length);
+                clientSocket.Send(Byte_Command_Sent, 0, String_SeData05[1].Split(' ').Length, System.Net.Sockets.SocketFlags.None);
 
-                for (int i = 0; i <= 50; i++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 String str_hex = "";
 
@@ -1827,7 +2197,7 @@ namespace MES_N
                         String_SQLcommand = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                     }
 
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     str_hex = "";
 
@@ -1944,7 +2314,7 @@ namespace MES_N
         //8 溫度4通道模組解碼
         void function_DTS_8()
         {
-            for (int i = 0; i <= 10; i++)
+            for (int i = 0; i < 50; i++)
             {
                 System.Threading.Thread.Sleep(10);
 
@@ -1966,10 +2336,10 @@ namespace MES_N
                 //StrArrayToByteArray("03 03 02 4C 00 04 85 84", Byte_Command_Sent_083);
 
                 //發送指令前先清完記憶體
-                if (TcpClient_Reader.Available > 0)
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, TcpClient_Reader.Available);
+                if (clientSocket.Available > 0)
+                    clientSocket.Receive(Byte_Command_Re, 0, clientSocket.Available, SocketFlags.None);
 
-                NetworkStream_Reader.Write(Byte_Command_Sent_082, 0, 8);
+                clientSocket.Send(Byte_Command_Sent_082, 0, 8, System.Net.Sockets.SocketFlags.None);
 
                 //清空讀取記憶體
                 for (int i = 0; i <= 50; i++)
@@ -1978,21 +2348,21 @@ namespace MES_N
                 }
 
                 //休息約 4秒
-                for (int i = 0; i <= 400; i++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
                     System.Windows.Forms.Application.DoEvents();
                 }
 
                 //判斷是否有網路資料
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 String str_hex = "";
 
                 //有資料大於13個位元組的再處理。
                 if (int_Net_Available >= 13)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     //判斷是否符合CRC
                     temCRC = crc16(Byte_Command_Re, 11);
                     //相符CRC的話才能執行  //20200311 加上判斷開頭 為 02 03
@@ -2060,29 +2430,29 @@ namespace MES_N
                 ////////第二台4ch
                 //發送指令前先清完記憶體
 
-                if (TcpClient_Reader.Available > 0)
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, TcpClient_Reader.Available);
+                if (clientSocket.Available > 0)
+                    clientSocket.Receive(Byte_Command_Re, 0, clientSocket.Available, SocketFlags.None);
 
-                NetworkStream_Reader.Write(Byte_Command_Sent_083, 0, 8);
+                clientSocket.Send(Byte_Command_Sent_083, 0, 8, System.Net.Sockets.SocketFlags.None);
 
                 for (int i = 0; i <= 50; i++)
                 {
                     Byte_Command_Re[i] = 0;
                 }
 
-                for (int i = 0; i <= 400; i++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = clientSocket.Available;
 
                 str_hex = "";
 
                 if (int_Net_Available >= 13)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     //判斷是否符合CRC
                     temCRC = crc16(Byte_Command_Re, 11);
@@ -2149,32 +2519,32 @@ namespace MES_N
                     }
                 }
 
-                if (TcpClient_Reader.Available > 0)
+                if (clientSocket.Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, TcpClient_Reader.Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, clientSocket.Available, SocketFlags.None);
                 }
 
                 /////////抓取速度模組
                 //發送讀取指令。
 
-                for (int i = 0; i <= 10; i++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                if (TcpClient_Reader.Available > 0)
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, TcpClient_Reader.Available);
+                if (clientSocket.Available > 0)
+                    clientSocket.Receive(Byte_Command_Re, 0, clientSocket.Available, SocketFlags.None);
 
                 for (int i = 0; i <= 50; i++)
                 {
                     Byte_Command_Re[i] = 0;
                 }
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData05[1].Split(' ').Length);
+                clientSocket.Send(Byte_Command_Sent, 0, String_SeData05[1].Split(' ').Length, System.Net.Sockets.SocketFlags.None);
 
-                for (int i = 0; i <= 150; i++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
@@ -2182,9 +2552,9 @@ namespace MES_N
                 }
 
                 //取得回傳大小。
-                int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = clientSocket.Available;
 
-                // NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                // clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                 //按照位置抓取資料，空壓的都採電壓式， 
                 //例位置1 ，抓 第4+第5 加總為16進製 4字元， 轉換成 10進製後得 x
@@ -2197,7 +2567,7 @@ namespace MES_N
                 {
                     //String_SQLcommand = "";
                     //一次只取21筆
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, 21);
+                    clientSocket.Receive(Byte_Command_Re, 0, 21, SocketFlags.None);
 
                     //判斷是否符合CRC
                     temCRC = crc16(Byte_Command_Re, 19);
@@ -2247,9 +2617,7 @@ namespace MES_N
                 // if (double_DCvi == 0 || double_DCvi == 10)
 
                 //else
-                {
-                    String_ReData[index] = int_Net_Available + "@" + str_T + ":" + String_Sclass;
-                }
+                String_ReData[index] = int_Net_Available + "@" + str_T + ":" + String_Sclass;
             }
             catch (Exception EX)
             {
@@ -2284,17 +2652,17 @@ namespace MES_N
                     
                     #endregion
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
 
-                for (int i = 0; i <= 50; i++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
-                NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                 String str_hex = "";
                 double double_Mpa = 0;
@@ -2324,17 +2692,18 @@ namespace MES_N
                 {
                     Byte_Command_Sent[i] = Convert.ToByte(Convert.ToInt32(eight2_1[i], 16));
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
 
-                for (int i = 0; i <= 50; i++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
+
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
-                NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                 String str_hex = "";
                 double double_Mpa = 0;
@@ -2381,20 +2750,20 @@ namespace MES_N
                         break;
                 }
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
 
-                for (int j = 0; j <= 50; j++)
+                for (int j = 0; j < 50; j++)
                 {
                     System.Threading.Thread.Sleep(10);
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
 
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     String str_hex = "";
                     double double_Mpa = 0;
@@ -2454,19 +2823,21 @@ namespace MES_N
                 {
                     Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light1_1[j], 16));
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
+
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     String str_hex_1 = "";
                     double_Mpa_1 = 0;
@@ -2487,17 +2858,17 @@ namespace MES_N
                     {
                         Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light2_1[j], 16));
                     }
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                    clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
 
-                    for (int j = 0; j <= 50; j++)
+                    for (int j = 0; j < 50; j++)
                     {
                         System.Threading.Thread.Sleep(10);
                         System.Windows.Forms.Application.DoEvents();
                     }
 
-                    //int int_Net_Available = TcpClient_Reader.Available;
+                    //int int_Net_Available = clientSocket.Available;
 
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     String str_hex_2 = "";
                     double_Mpa_2 = 0;
@@ -2580,22 +2951,21 @@ namespace MES_N
                 {
                     Byte_Command_Sent[j] = Convert.ToByte(String_SeData13[1].Split(' ')[j], 16);
                 }
+                clientSocket.Send(Byte_Command_Sent, 0, String_SeData13[1].Split(' ').Length, System.Net.Sockets.SocketFlags.None);
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData13[1].Split(' ').Length);
 
-
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     if (int_Net_Available == 14)
                     {
@@ -2685,7 +3055,7 @@ namespace MES_N
                         //byte_Command_wlslcs[2] = Convert.ToByte("31", 16);
                         //byte_Command_wlslcs[3] = Convert.ToByte("0D", 16);
                         //byte_Command_wlslcs[4] = Convert.ToByte("0A", 16);
-                        NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                        clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
                     }
                     else
                     {
@@ -2695,7 +3065,7 @@ namespace MES_N
                         byte_Command_wlslcs[2] = Convert.ToByte("32", 16);
                         byte_Command_wlslcs[3] = Convert.ToByte("0D", 16);
                         byte_Command_wlslcs[4] = Convert.ToByte("0A", 16);
-                        NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                        clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
                     }
 
                     MPU.str_Barcode = "";
@@ -2721,17 +3091,24 @@ namespace MES_N
                     SetOrangeLight();
                 }
 
+                for (int i = 0; i < 50; i++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
                 //取得目前網路盒的訊號資料量大小
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 //判斷是否有資料以及是否可以讀取。
-                if (int_Net_Available >= 10 && NetworkStream_Reader.CanRead == true)
+                if (int_Net_Available >= 10)
                 {
                     byte_function_03_loop_index = 0;
 
                     string str_T = "";
 
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, 10);
+                    clientSocket.Receive(Byte_Command_Re, 0, 10, SocketFlags.None);
 
                     for (int j = 0; j <= 10 - 2; j++)
                     {
@@ -2874,16 +3251,16 @@ namespace MES_N
                     //byte_Command_wlslcs[0] = Convert.ToByte("", 16);
                     //byte_Command_wlslcs[0] = Convert.ToByte("", 16);
 
-                    NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+                    clientSocket.Receive(byte_Command_wlslcs, 0, 5, SocketFlags.None);
 
-                    for (int i = 0; i <= 50; i++)
+                    for (int i = 0; i < 50; i++)
                     {
-                        System.Threading.Thread.Sleep(5);
+                        System.Threading.Thread.Sleep(10);
 
                         System.Windows.Forms.Application.DoEvents();
                     }
 
-                    int int_Net_Availablexxx = TcpClient_Reader.Available;
+                    int int_Net_Availablexxx = clientSocket.Available;
 
                     //如果真的都沒有值回傳的話，再準備進行資料重連的動作。
                     if (int_Net_Availablexxx == 0)
@@ -2904,9 +3281,9 @@ namespace MES_N
 
                                 str_ttt = "";
 
-                                NetworkStream_Reader.Close();
+                                //NetworkStream_Reader.Close();
 
-                                TcpClient_Reader.Close();
+                                //TcpClient_Reader.Close();
 
                                 //NetworkStream_Reader = null;
 
@@ -2920,7 +3297,7 @@ namespace MES_N
                                 }
 
                                 //重新建立連結
-                                TcpClientConnect();
+                                SocketClientConnect();
 
                                 MPU.TOSrun = false;
                             }
@@ -2976,21 +3353,21 @@ namespace MES_N
                     default:
                         break;
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
 
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     String str_hex = "";
                     double double_Mpa = 0;
@@ -3011,7 +3388,7 @@ namespace MES_N
 
                     double_Mpa = Math.Round(double_Mpa, 2);
 
-                    if (double_Mpa > 0)
+                    if (double_Mpa >= 0)
                     {
                         String_ReData[index] = "正壓 (" + double_Mpa.ToString() + ")";
                         String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
@@ -3060,18 +3437,18 @@ namespace MES_N
                 int int_Net_Available = 0;
 
                 Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F1");
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
-
-                for (int j = 0; j <= 50; j++)
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
+
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = clientSocket.Available;
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
 
@@ -3131,25 +3508,25 @@ namespace MES_N
             try
             {
                 Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F2");
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available != 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[F15_port + 1];
-                    if (temp != "NA")
+                    if (temp != "NA" && !string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp) && decimal.TryParse(temp, out decimal n))
                     {
-                        if (Convert.ToDouble(temp) > 0)
+                        if (Convert.ToDouble(temp) >= 0)
                             String_ReData[index] = "正壓 (" + temp + ")";
                         else
                             String_ReData[index] = "負壓 (" + temp + ")";
@@ -3159,6 +3536,7 @@ namespace MES_N
                     }
                     else
                     {
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
                         String_SQLcommand = "";
                         String_SQLcommand_old = "";
                     }
@@ -3192,27 +3570,38 @@ namespace MES_N
             {
                 Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F3");
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
+
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
                 if (int_Net_Available != 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     double double_Mpa = 0;
 
                     double_Mpa = Convert.ToDouble(Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[F11_port + 1]);
 
-                    String_ReData[index] = "流量 (" + double_Mpa.ToString() + ")";
+                    if (!string.IsNullOrWhiteSpace(double_Mpa.ToString()) && !string.IsNullOrEmpty(double_Mpa.ToString()) && decimal.TryParse(double_Mpa.ToString(), out decimal n))
+                    {
+                        String_ReData[index] = "流量 (" + double_Mpa.ToString() + ")";
 
-                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + double_Mpa.ToString() + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else
+                    {
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
+
                 }
                 else
                 {
@@ -3242,28 +3631,36 @@ namespace MES_N
             try
             {
                 Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F4");
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
 
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
                 if (int_Net_Available != 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
 
                     temp = temp.Replace("NA", "0");
+                    if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp) && decimal.TryParse(temp, out decimal n))
+                    {
+                        String_ReData[index] = "溫度 (" + temp + ")";
 
-                    String_ReData[index] = "溫度 (" + temp + ")";
-
-                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp.Split('/')[0] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp.Split('/')[0] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp.Split('/')[0] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp.Split('/')[0] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else
+                    {
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
                 }
                 else
                 {
@@ -3294,29 +3691,38 @@ namespace MES_N
             try
             {
                 Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F5");
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
 
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
 
                     temp = temp.Replace("NA", "0");
 
-                    String_ReData[index] = "種晶吸嘴阻值 (" + temp + ")";
+                    if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp) && decimal.TryParse(temp, out decimal n))
+                    {
+                        String_ReData[index] = "種晶吸嘴阻值 (" + temp + ")";
 
-                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else
+                    {
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
                 }
                 else
                 {
@@ -3347,29 +3753,38 @@ namespace MES_N
             try
             {
                 Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F6");
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
 
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available != 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim(';').Split(',')[1];
 
                     temp = temp.Replace("NA", "0");
 
-                    String_ReData[index] = "H-Judge讀值 (" + temp + ")";
+                    if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp) && decimal.TryParse(temp, out decimal n))
+                    {
+                        String_ReData[index] = "H-Judge讀值 (" + temp + ")";
 
-                    String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                    String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                    }
+                    else
+                    {
+                        String_ReData[index] = MPU.str_ErrorMessage[5];
+                        String_SQLcommand = "";
+                        String_SQLcommand_old = "";
+                    }
                 }
                 else
                 {
@@ -3400,18 +3815,18 @@ namespace MES_N
             try
             {
                 Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F7");
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
 
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
-                NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                int int_Net_Available = clientSocket.Available;
+                clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                 if (int_Net_Available != 0)
                 {
@@ -3420,10 +3835,19 @@ namespace MES_N
                     {
                         temp[1] = temp[1].TrimStart('0');
 
-                        String_ReData[index] = "溫度 (" + temp[1] + ")";
+                        if (!string.IsNullOrWhiteSpace(temp[1]) && !string.IsNullOrEmpty(temp[1]) && decimal.TryParse(temp[1], out decimal n))
+                        {
+                            String_ReData[index] = "溫度 (" + temp[1] + ")";
 
-                        String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp[1] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
-                        String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp[1] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                            String_SQLcommand = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp[1] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                            String_SQLcommand_old = "INSERT INTO [dbo].[tb_CSPrecordslog_1] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + String_TID + "','" + String_DIP + "','" + String_SID + "','" + temp[1] + "','" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "','" + String_NOTE + "') ";
+                        }
+                        else
+                        {
+                            String_ReData[index] = MPU.str_ErrorMessage[5];
+                            String_SQLcommand = "";
+                            String_SQLcommand_old = "";
+                        }
                     }
                 }
                 else
@@ -3459,22 +3883,21 @@ namespace MES_N
                 {
                     Byte_Command_Sent[j] = Convert.ToByte(String_SeData13[1].Split(' ')[j], 16);
                 }
+                clientSocket.Send(Byte_Command_Sent, 0, String_SeData13[1].Split(' ').Length, System.Net.Sockets.SocketFlags.None);
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, String_SeData13[1].Split(' ').Length);
 
-
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     double SH = 4553.6, SL = -1999.9;   
                     double temp;
                     string hex = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
@@ -3525,23 +3948,24 @@ namespace MES_N
                 int int_Net_Available = 0;
 
                 Byte_Command_Sent = Encoding.ASCII.GetBytes("S1F8");
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, Byte_Command_Sent.Length);
+                clientSocket.Send(Byte_Command_Sent, 0, Byte_Command_Sent.Length, System.Net.Sockets.SocketFlags.None);
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
-                    System.Threading.Thread.Sleep(200);
+                    System.Threading.Thread.Sleep(10);
+
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = clientSocket.Available;
                 if (int_Net_Available > 0)
                 {
                     Byte_Command_Re = new byte[int_Net_Available];
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     string temp = Encoding.ASCII.GetString(Byte_Command_Re, 0, int_Net_Available).Trim('\0').Trim(';');
 
-                    if (!string.IsNullOrWhiteSpace(temp) || !string.IsNullOrEmpty(temp))
+                    if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp))
                     {
                         //綠燈(運行中)
                         String_ReData[index] = "S1F8 (" + temp + ")";
@@ -3611,21 +4035,21 @@ namespace MES_N
                     default:
                         break;
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
 
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     String str_hex = "";
                     double double_Mpa = 0;
@@ -3740,16 +4164,17 @@ namespace MES_N
                 {
                     Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light1_1[j], 16));
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
-                for (int j = 0; j <= 50; j++)
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
+
                     System.Windows.Forms.Application.DoEvents();
                 }
-                int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = clientSocket.Available;
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     String str_hex_1 = "";
                     double_Mpa_1 = 0;
                     str_hex_1 = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
@@ -3766,14 +4191,14 @@ namespace MES_N
                     {
                         Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light2_1[j], 16));
                     }
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
-                    for (int j = 0; j <= 50; j++)
+                    clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
+                    for (int j = 0; j < 50; j++)
                     {
                         System.Threading.Thread.Sleep(10);
                         System.Windows.Forms.Application.DoEvents();
                     }
-                    //int int_Net_Available = TcpClient_Reader.Available;
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    //int int_Net_Available = clientSocket.Available;
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     String str_hex_2 = "";
                     double_Mpa_2 = 0;
                     str_hex_2 = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
@@ -3852,16 +4277,17 @@ namespace MES_N
                 {
                     Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light1_1[j], 16));
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
-                for (int j = 0; j <= 50; j++)
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
+
                     System.Windows.Forms.Application.DoEvents();
                 }
-                int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = clientSocket.Available;
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     String str_hex_1 = "";
                     double_Mpa_1 = 0;
                     str_hex_1 = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
@@ -3878,14 +4304,14 @@ namespace MES_N
                     {
                         Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light2_1[j], 16));
                     }
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
-                    for (int j = 0; j <= 50; j++)
+                    clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
+                    for (int j = 0; j < 50; j++)
                     {
                         System.Threading.Thread.Sleep(10);
                         System.Windows.Forms.Application.DoEvents();
                     }
-                    //int int_Net_Available = TcpClient_Reader.Available;
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    //int int_Net_Available = clientSocket.Available;
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     String str_hex_2 = "";
                     double_Mpa_2 = 0;
                     str_hex_2 = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
@@ -3965,16 +4391,17 @@ namespace MES_N
                 {
                     Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light1_1[j], 16));
                 }
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
-                for (int j = 0; j <= 50; j++)
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
+
                     System.Windows.Forms.Application.DoEvents();
                 }
-                int_Net_Available = TcpClient_Reader.Available;
+                int_Net_Available = clientSocket.Available;
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     String str_hex_1 = "";
                     double_Mpa_1 = 0;
                     str_hex_1 = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
@@ -3991,14 +4418,14 @@ namespace MES_N
                     {
                         Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(light2_1[j], 16));
                     }
-                    NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
-                    for (int j = 0; j <= 50; j++)
+                    clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
+                    for (int j = 0; j < 50; j++)
                     {
                         System.Threading.Thread.Sleep(10);
                         System.Windows.Forms.Application.DoEvents();
                     }
-                    //int int_Net_Available = TcpClient_Reader.Available;
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    //int int_Net_Available = clientSocket.Available;
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
                     String str_hex_2 = "";
                     double_Mpa_2 = 0;
                     str_hex_2 = Convert.ToString(Byte_Command_Re[4], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[5], 16).PadLeft(2, '0');
@@ -4073,21 +4500,21 @@ namespace MES_N
                     Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(eight2_1[j], 16));
                 }
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
 
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     String str_hex = "";
                     double double_Mpa = 0;
@@ -4155,21 +4582,21 @@ namespace MES_N
                     Byte_Command_Sent[j] = Convert.ToByte(Convert.ToInt32(String_SeData05[1].Split(' ')[j], 16));
                 }
 
-                NetworkStream_Reader.Write(Byte_Command_Sent, 0, 8);
+                clientSocket.Send(Byte_Command_Sent, 0, 8, System.Net.Sockets.SocketFlags.None);
 
 
-                for (int j = 0; j <= 50; j++)
+                for (int i = 0; i < 50; i++)
                 {
                     System.Threading.Thread.Sleep(10);
 
                     System.Windows.Forms.Application.DoEvents();
                 }
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
 
                 if (int_Net_Available > 0)
                 {
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     String str_hex = "";
                     double double_Mpa = 0;
@@ -4243,24 +4670,28 @@ namespace MES_N
                 byte_Command_wlslcs[10] = 0;
                 byte_Command_wlslcs[11] = 2;
 
-                NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 12);
+                clientSocket.Send(byte_Command_wlslcs, 0, 12, System.Net.Sockets.SocketFlags.None);
+
+                for (int i = 0; i < 50; i++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
 
 
-                System.Threading.Thread.Sleep(int_ReaderSleep);
 
-
-
-                int int_Net_Available = TcpClient_Reader.Available;
+                int int_Net_Available = clientSocket.Available;
                 //有條碼時才動作。
 
-                if (int_Net_Available > 0 && NetworkStream_Reader.CanRead == true)
+                if (int_Net_Available > 0)
                 {
 
                     string str_T = "";
 
                     //抓取資料之後轉為字元
                     //Convert.ToString(Byte_Command_Re[1 + (int_GetPortid * 2)], 16).PadLeft(2, '0')
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     str_T = Convert.ToString(Byte_Command_Re[9], 16).PadLeft(2, '0') + Convert.ToString(Byte_Command_Re[10], 16).PadLeft(2, '0');
 
@@ -4377,7 +4808,7 @@ namespace MES_N
                     if (byte_function_03_loop_index > 5)
                     {
                         //重新建立連結
-                        TcpClientConnect();
+                        SocketClientConnect();
 
                         byte_function_03_loop_index = 0;
 
@@ -4455,21 +4886,26 @@ namespace MES_N
                 byte_Command_wlslcs[6] = 0xE5;
                 byte_Command_wlslcs[7] = 0x7D;
 
-                NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 8);
+                clientSocket.Send(byte_Command_wlslcs, 0, 8, System.Net.Sockets.SocketFlags.None);
 
-                System.Threading.Thread.Sleep(int_ReaderSleep);
+                for (int i = 0; i < 50; i++)
+                {
+                    System.Threading.Thread.Sleep(10);
 
-                int int_Net_Available = TcpClient_Reader.Available;
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = clientSocket.Available;
                 //有資料時才動作。
 
-                if (int_Net_Available > 0 && NetworkStream_Reader.CanRead == true)
+                if (int_Net_Available > 0)
                 {
 
                     string str_T = "";
 
                     //抓取資料之後轉為字元
                     //Convert.ToString(Byte_Command_Re[1 + (int_GetPortid * 2)], 16).PadLeft(2, '0')
-                    NetworkStream_Reader.Read(Byte_Command_Re, 0, int_Net_Available);
+                    clientSocket.Receive(Byte_Command_Re, 0, int_Net_Available, SocketFlags.None);
 
                     ////`00 0a 03 04 01 96 6e a3 cd 3a `
                     //`01 96 6e a3 ` 轉換 `26635939 `
@@ -4591,7 +5027,7 @@ namespace MES_N
                     if (byte_function_03_loop_index > 5)
                     {
                         //重新建立連結
-                        TcpClientConnect();
+                        SocketClientConnect();
 
                         byte_function_03_loop_index = 0;
 

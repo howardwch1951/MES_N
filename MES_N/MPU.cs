@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace MES_N
@@ -44,7 +45,7 @@ namespace MES_N
 
         public static ConcurrentDictionary<int, string> dic_ReceiveMessage = new ConcurrentDictionary<int, string>();
 
-        public static String[] str_ErrorMessage = new string[] { "Ex", "網路連線失敗", "設備查無資料" ,"連線中", "Sclass設定錯誤", "無資料"};
+        public static String[] str_ErrorMessage = new string[] { "Ex", "網路連線失敗", "設備查無資料" ,"連線中", "Sclass設定錯誤", "無資料", "重新連線中" };
 
         public static String str_Barcode = "";
 
@@ -61,6 +62,8 @@ namespace MES_N
         //public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection("server=192.168.1.58;Initial Catalog=dbMES;Persist Security Info=True;User ID=sa;Password=aaa222!!!");
         public static System.Data.SqlClient.SqlConnection conn = new System.Data.SqlClient.SqlConnection(conStr);
         public static System.Data.SqlClient.SqlConnection conn_old = new System.Data.SqlClient.SqlConnection(conStr_old);
+
+        private static object Lock_SQL = new object();
 
         #region 讀取SQL-MES暫存資料庫(dbMES_temp)
         /// <summary>
@@ -79,13 +82,12 @@ namespace MES_N
                     cmd.ExecuteNonQuery();
                     cmd.Cancel();
                     conn.Close();
-                    MPU.Ethernet = true;
                 }
             }
             catch (Exception ex)
             {
-                MPU.Ethernet = false;
-                throw ex;
+                WriteSQLErrorCode("[ReadSQL_dbMEStemp] " + ex.Message, pSQL);
+
             }
         }
         #endregion
@@ -109,13 +111,12 @@ namespace MES_N
                     adapter.Fill(dtSource);
                     cmd.Cancel();
                     conn.Close();
-                    MPU.Ethernet = true;
                 }
             }
             catch (Exception ex)
             {
-                MPU.Ethernet = false;
-                throw ex;
+                WriteSQLErrorCode("[ReadSQLToDT_dbMEStemp] " + ex.Message, pSQL);
+
             }
             return dtSource;
         }
@@ -134,7 +135,7 @@ namespace MES_N
                 {
                     conn.Open();
                     SqlCommand cmd = new SqlCommand(pSQL, conn);
-                    cmd.CommandTimeout = 3;
+                    cmd.CommandTimeout = 10;
                     cmd.ExecuteNonQuery();
                     cmd.Cancel();
                     conn.Close();
@@ -143,14 +144,14 @@ namespace MES_N
             }
             catch (Exception ex)
             {
-                if (Check_Connection.CheckConnaction())
+                //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
+                if (!pSQL.Contains("tb_connectlog") && !ex.Message.Contains("字串或二進位資料會被截斷。"))
                 {
-                    MPU.Ethernet = false;
-
-                    //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
                     ReadSQL_dbMEStemp(pSQL);
+                    SQLInsertError("資料寫入異常");
                 }
-                throw ex;
+
+                WriteSQLErrorCode("[ReadSQL] " + ex.Message, pSQL);
             }
         }
         #endregion
@@ -179,13 +180,9 @@ namespace MES_N
             }
             catch (Exception ex)
             {
-                if (Check_Connection.CheckConnaction())
-                {
-                    MPU.Ethernet = false;
+                Check_Connection.CheckConnaction();
+                WriteSQLErrorCode("[ReadSQLToDT] " + ex.Message, pSQL);
 
-                    //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
-                    ReadSQLToDT_dbMEStemp(pSQL);
-                }
             }
             return dtSource;
         }
@@ -341,10 +338,94 @@ namespace MES_N
 
         }
 
-        private static readonly object D_Lock = new object();
-        static string strErrorMessageLOG = "";
+        #region SQL ERROR LOG
+        public static void WriteSQLErrorCode(String strErrorMessage, string SQL)
+        {
+            object D_Lock = new object();
+            string strErrorMessageLOG = "";
+            lock (D_Lock)
+            {
+                string write_path = System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\" + DateTime.Now.ToString("yyyyMMdd") + ".txt";
+
+                if (!File.Exists(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\" + DateTime.Now.ToString("yyyyMMdd") + ".txt"))
+                {
+                    if (!Directory.Exists(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\"))
+                    {
+                        Directory.CreateDirectory(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\");
+                    }
+
+                    using (System.IO.FileStream fs = System.IO.File.Create(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\" + DateTime.Now.ToString("yyyyMMdd") + ".txt"))
+                    {
+                    }
+                }
+
+                //重覆的錯誤，就不要再記錄了。
+                if (strErrorMessage != strErrorMessageLOG)
+                {
+
+                    //如果檔案太大就清空文字檔。
+                    FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\" + DateTime.Now.ToString("yyyyMMdd") + ".txt");
+                    Boolean bool_OverWriter = true;
+
+                    if (f.Length > 50000)
+                    {
+                        bool_OverWriter = false;
+                    }
+
+                    using (System.IO.StreamWriter wf = new System.IO.StreamWriter(write_path, true, System.Text.Encoding.GetEncoding("big5")))
+                    {
+                        wf.WriteLine(DateTime.Now.ToString("yyyyMMdd HH:mm:ss") + ":" + strErrorMessage);
+                        wf.WriteLine(SQL);
+                    }
+
+                    strErrorMessageLOG = strErrorMessage;
+
+                }
+            }
+        }
+        #endregion
+
+        #region SQL INSERT ERROR LOG
+        public static void SQLInsertError(String strErrorMessage)
+        {
+            object D_Lock = new object();
+            lock (D_Lock)
+            {
+                string write_path = System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt";
+
+                if (!File.Exists(System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt"))
+                {
+                    if (!Directory.Exists(System.Environment.CurrentDirectory + @"\SQL_Error\"))
+                    {
+                        Directory.CreateDirectory(System.Environment.CurrentDirectory + @"\SQL_Error\");
+                    }
+
+                    using (System.IO.FileStream fs = System.IO.File.Create(System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt"))
+                    {
+                    }
+                }
+
+                //如果檔案太大就清空文字檔。
+                FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt");
+                Boolean bool_OverWriter = true;
+
+                if (f.Length > 50000)
+                {
+                    bool_OverWriter = false;
+                }
+
+                using (System.IO.StreamWriter wf = new System.IO.StreamWriter(write_path, true, System.Text.Encoding.GetEncoding("big5")))
+                {
+                    wf.WriteLine(DateTime.Now.ToString("[HH:mm:ss] ") + ":" + strErrorMessage);
+                }
+            }
+        }
+        #endregion
+
         public static void WriteErrorCode(String strSourceID, String strErrorMessage)
         {
+            object D_Lock = new object();
+            string strErrorMessageLOG = "";
             lock (D_Lock)
             {
                 string write_path = System.Environment.CurrentDirectory + @"\Log\error.txt";

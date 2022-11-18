@@ -36,8 +36,11 @@ namespace MES_N
 		    if (TimeoutObject.WaitOne(timeoutMSec, false)) {
 			    if (IsConnectionSuccessful) {
 				    return tcpclient;
-			    } else {
-				    throw new Exception();
+			    } 
+				else
+				{
+					tcpclient.Close();
+					throw new Exception();
 			    }
 		    } else {
 			    tcpclient.Close();

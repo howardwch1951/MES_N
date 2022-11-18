@@ -11,7 +11,7 @@ namespace MES_N
             {
                 using (SqlConnection conn = new SqlConnection(MPU.conStr))
                 {
-                    string sql = "select DIP from tb_connectlog where 1 = 0";
+                    string sql = "select 1";
 
                     using (SqlCommand cmd = conn.CreateCommand())
                     {
@@ -37,7 +37,7 @@ namespace MES_N
             Ping ping = new Ping();
             try
             {
-                PingReply reply = ping.Send("192.168.1.58", 1500);
+                PingReply reply = ping.Send("192.168.1.58", 3000);
                 if (reply.Status == IPStatus.Success)
                     return true;
                 else
