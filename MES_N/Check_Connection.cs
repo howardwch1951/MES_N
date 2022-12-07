@@ -19,7 +19,7 @@ namespace MES_N
                         cmd.CommandText = sql;
                         cmd.Parameters.AddRange(parameters);
                         SqlDataAdapter adapter = new SqlDataAdapter(cmd);
-                        cmd.CommandTimeout = 3;
+                        cmd.CommandTimeout = 10;
                         cmd.Cancel();
                         conn.Close();
                         return true;
@@ -37,7 +37,7 @@ namespace MES_N
             Ping ping = new Ping();
             try
             {
-                PingReply reply = ping.Send("192.168.1.58", 3000);
+                PingReply reply = ping.Send("192.168.1.58", 5000);
                 if (reply.Status == IPStatus.Success)
                     return true;
                 else

@@ -14,7 +14,7 @@ namespace MES_N
 {
 
     //共用的函數群
-    public static  class MPU
+    public static class MPU
     {
 
         public static Boolean TOSrun = false;
@@ -45,13 +45,19 @@ namespace MES_N
 
         public static ConcurrentDictionary<int, string> dic_ReceiveMessage = new ConcurrentDictionary<int, string>();
 
-        public static String[] str_ErrorMessage = new string[] { "Ex", "網路連線失敗", "設備查無資料" ,"連線中", "Sclass設定錯誤", "無資料", "重新連線中" };
+        public static Dictionary<string, DateTime> dicSQL = new Dictionary<string, DateTime>();
+
+        public static String[] str_ErrorMessage = new string[] { "Ex", "網路連線失敗", "設備查無資料", "連線中...", "Sclass設定錯誤", "無資料", "重新連線中" };
 
         public static String str_Barcode = "";
+
+        public static int intSQLCount = 0;
 
         public static List<String> list_HistoryLog = new List<String>();
 
         public static List<String> list_CurrentLog = new List<String>();
+
+        public static List<String> listSQL = new List<String>();
 
         public static Boolean Ethernet = false;
 
@@ -147,11 +153,46 @@ namespace MES_N
                 //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
                 if (!pSQL.Contains("tb_connectlog") && !ex.Message.Contains("字串或二進位資料會被截斷。"))
                 {
-                    ReadSQL_dbMEStemp(pSQL);
-                    SQLInsertError("資料寫入異常");
+                    //ReadSQL_dbMEStemp(pSQL);
+                    //SQLInsertError("資料寫入異常");
+
+                    //寫入失敗就先儲存SQL語法，再重新寫入一次
+                    dicSQL.Add($"{pSQL}--{intSQLCount}", DateTime.Now);
+
+                    if (intSQLCount <= 10000)
+                        intSQLCount++;
+                    else
+                        intSQLCount = 0;
                 }
 
                 WriteSQLErrorCode("[ReadSQL] " + ex.Message, pSQL);
+            }
+        }
+
+        public static void ReReadSQL(string pSQL)
+        {
+            try
+            {
+                using (SqlConnection conn = new SqlConnection(conStr))
+                {
+                    conn.Open();
+                    SqlCommand cmd = new SqlCommand(pSQL, conn);
+                    cmd.CommandTimeout = 10;
+                    cmd.ExecuteNonQuery();
+                    cmd.Cancel();
+                    conn.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
+                if (!pSQL.Contains("tb_connectlog") && !ex.Message.Contains("字串或二進位資料會被截斷。"))
+                {
+                    ReadSQL_dbMEStemp(pSQL);
+                    //SQLInsertError("資料寫入異常");
+                }
+
+                WriteSQLErrorCode("[ReReadSQL] " + ex.Message, pSQL);
             }
         }
         #endregion
@@ -300,27 +341,30 @@ namespace MES_N
             {
                 string read = "", line;
                 path = path + "/" + name;
-                FileStream logFileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                StreamReader logFileReader = new StreamReader(logFileStream, Encoding.UTF8);
-                while (!logFileReader.EndOfStream)
+                using (FileStream logFileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
-                    line = logFileReader.ReadLine();
-                    read += line + "#@#";
+                    using (StreamReader logFileReader = new StreamReader(logFileStream, Encoding.UTF8))
+                    {
+                        while (!logFileReader.EndOfStream)
+                        {
+                            line = logFileReader.ReadLine();
+                            read += line + "#@#";
+                        }
+                        logFileReader.Close();
+                        logFileStream.Close();
+                        if (read != "")
+                        {
+                            read = read.Substring(0, read.Length - 3);
+                            content = Regex.Split(read, "#@#");
+                        }
+                    }
                 }
-                logFileReader.Close();
-                logFileStream.Close();
-                if (read != "")
-                {
-                    read = read.Substring(0, read.Length - 3);
-                    content = Regex.Split(read, "#@#");
-                }
-
                 return content;
             }
             catch (Exception ex)
             {
                 // log with exception here
-
+                Console.WriteLine("[GetFileData]" + ex.Message);
                 return content;
             }
         }
@@ -331,10 +375,10 @@ namespace MES_N
         /// </summary>
         /// <param name="Arry_Str_Set"></param>
         /// <param name="StrDataColumnsName"></param>
-        public static  void SetDataColumn(ref String[] Arry_Str_Set, String StrDataColumnsName)
+        public static void SetDataColumn(ref String[] Arry_Str_Set, String StrDataColumnsName)
         {
 
-            Arry_Str_Set = StrDataColumnsName.Split(',');           
+            Arry_Str_Set = StrDataColumnsName.Split(',');
 
         }
 
@@ -345,16 +389,16 @@ namespace MES_N
             string strErrorMessageLOG = "";
             lock (D_Lock)
             {
-                string write_path = System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\" + DateTime.Now.ToString("yyyyMMdd") + ".txt";
+                string write_path = System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt";
 
-                if (!File.Exists(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\" + DateTime.Now.ToString("yyyyMMdd") + ".txt"))
+                if (!File.Exists(System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt"))
                 {
-                    if (!Directory.Exists(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\"))
+                    if (!Directory.Exists(System.Environment.CurrentDirectory + @"\SQL_Error\"))
                     {
-                        Directory.CreateDirectory(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\");
+                        Directory.CreateDirectory(System.Environment.CurrentDirectory + @"\SQL_Error\");
                     }
 
-                    using (System.IO.FileStream fs = System.IO.File.Create(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\" + DateTime.Now.ToString("yyyyMMdd") + ".txt"))
+                    using (System.IO.FileStream fs = System.IO.File.Create(System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt"))
                     {
                     }
                 }
@@ -364,13 +408,7 @@ namespace MES_N
                 {
 
                     //如果檔案太大就清空文字檔。
-                    FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\SQL_Error\SQL_Command\" + DateTime.Now.ToString("yyyyMMdd") + ".txt");
-                    Boolean bool_OverWriter = true;
-
-                    if (f.Length > 50000)
-                    {
-                        bool_OverWriter = false;
-                    }
+                    FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt");
 
                     using (System.IO.StreamWriter wf = new System.IO.StreamWriter(write_path, true, System.Text.Encoding.GetEncoding("big5")))
                     {
@@ -407,12 +445,6 @@ namespace MES_N
 
                 //如果檔案太大就清空文字檔。
                 FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\SQL_Error\" + DateTime.Now.ToString("yyyyMMdd") + ".txt");
-                Boolean bool_OverWriter = true;
-
-                if (f.Length > 50000)
-                {
-                    bool_OverWriter = false;
-                }
 
                 using (System.IO.StreamWriter wf = new System.IO.StreamWriter(write_path, true, System.Text.Encoding.GetEncoding("big5")))
                 {
@@ -448,12 +480,6 @@ namespace MES_N
 
                     //如果檔案太大就清空文字檔。
                     FileInfo f = new FileInfo(System.Environment.CurrentDirectory + @"\Log\error.txt");
-                    Boolean bool_OverWriter = true;
-
-                    if (f.Length > 50000)
-                    {
-                        bool_OverWriter = false;
-                    }
 
                     using (System.IO.StreamWriter wf = new System.IO.StreamWriter(write_path, true, System.Text.Encoding.GetEncoding("big5")))
                     {
@@ -466,13 +492,23 @@ namespace MES_N
             }
         }
 
-        /// <summary>
-        /// 設定系統自建資料表
-        /// </summary>
-        /// <param name="StrDataTableName"></param>
-        /// <param name="DataTable_Set"></param>
-        /// <param name="StrDataColumnsName"></param>
-        public static void SetDataTable(String StrDataTableName, ref System.Data.DataTable DataTable_Set, String[] StrDataColumnsName)
+
+        public static void sleep_Loop(int sleepLoop, int sleepTime)
+        {
+            for (int int_t = 0; int_t<sleepLoop; int_t++)
+            {
+                System.Windows.Forms.Application.DoEvents();
+                System.Threading.Thread.Sleep(sleepTime);
+            }
+        }
+           
+    /// <summary>
+    /// 設定系統自建資料表
+    /// </summary>
+    /// <param name="StrDataTableName"></param>
+    /// <param name="DataTable_Set"></param>
+    /// <param name="StrDataColumnsName"></param>
+    public static void SetDataTable(String StrDataTableName, ref System.Data.DataTable DataTable_Set, String[] StrDataColumnsName)
         { 
 
             try
