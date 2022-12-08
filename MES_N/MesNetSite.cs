@@ -67,7 +67,7 @@ namespace MES_N
         //確保同一時間只能建立一個連線
         bool bool_passive = false;
         //製作一個boolean 代表只有單一個動作在執行
-        bool boolMESnetISrun = false;
+        public bool boolMESnetISrun = false;
         //執行緒開關
         public bool bool_AutoRun = false;
         //執行緒是否成功啟動，啟動後會更新為true
@@ -700,71 +700,73 @@ namespace MES_N
                                     strCmdSQL = "";
 
                                 //將SQL語法合併到sbSQL中
-                                sbSQL.AppendLine(strCmdSQL);
-                                sbSQL.AppendLine();
-
+                                //sbSQL.AppendLine(strCmdSQL);
+                                //sbSQL.AppendLine();
+                                if (!string.IsNullOrWhiteSpace(strCmdSQL))
+                                    MPU.listSQL.Add(strCmdSQL);
                             }
 
+                            //20221207改為由Form的Timer統一寫入資料庫
                             #region  判斷目前感測器連線狀態，連線正常就回寫資料庫
-                            if (MPU.canInsertToDB)
-                            {
-                                switch (dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[0])
-                                {
-                                    case "3": //控制燈號模組
-                                        #region 無法用Socket.Poll判斷連線
-                                        if (clientSocket != null && clientSocket.Connected == true)
-                                        {
-                                            if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
-                                            {
-                                                if (Check_Connection.CheckConnaction())
-                                                {
-                                                    MPU.ReadSQL(sbSQL.ToString());
-                                                }
-                                                else
-                                                {
-                                                    MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
-                                                }
-                                            }
-                                        }
-                                        #endregion
-                                        break;
-                                    case "0"://寫假資料讓燈號亮黃燈
-                                    case "26": //只PING設備IP，連線成功就回傳黃燈
-                                    case "31": //廠務設備 比電阻
-                                        #region 無須建立連線
-                                        if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
-                                        {
-                                            if (Check_Connection.CheckConnaction())
-                                            {
-                                                MPU.ReadSQL(sbSQL.ToString());
-                                            }
-                                            else
-                                            {
-                                                MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
-                                            }
-                                        }
-                                        #endregion
-                                        break;
-                                    default:
-                                        #region 可以用Socket.Poll判斷連線
-                                        if (clientSocket != null && !clientSocket.Poll(1, SelectMode.SelectRead) && clientSocket.Connected == true)
-                                        {
-                                            if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
-                                            {
-                                                if (Check_Connection.CheckConnaction())
-                                                {
-                                                    MPU.ReadSQL(sbSQL.ToString());
-                                                }
-                                                else
-                                                {
-                                                    MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
-                                                }
-                                            }
-                                        }
-                                        #endregion
-                                        break;
-                                }
-                            }
+                            //if (false)
+                            //{
+                            //    switch (dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[0])
+                            //    {
+                            //        case "3": //控制燈號模組
+                            //            #region 無法用Socket.Poll判斷連線
+                            //            if (clientSocket != null && clientSocket.Connected == true)
+                            //            {
+                            //                if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                            //                {
+                            //                    if (Check_Connection.CheckConnaction())
+                            //                    {
+                            //                        MPU.ReadSQL(sbSQL.ToString());
+                            //                    }
+                            //                    else
+                            //                    {
+                            //                        MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
+                            //                    }
+                            //                }
+                            //            }
+                            //            #endregion
+                            //            break;
+                            //        case "0"://寫假資料讓燈號亮黃燈
+                            //        case "26": //只PING設備IP，連線成功就回傳黃燈
+                            //        case "31": //廠務設備 比電阻
+                            //            #region 無須建立連線
+                            //            if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                            //            {
+                            //                if (Check_Connection.CheckConnaction())
+                            //                {
+                            //                    MPU.ReadSQL(sbSQL.ToString());
+                            //                }
+                            //                else
+                            //                {
+                            //                    MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
+                            //                }
+                            //            }
+                            //            #endregion
+                            //            break;
+                            //        default:
+                            //            #region 可以用Socket.Poll判斷連線
+                            //            if (clientSocket != null && !clientSocket.Poll(1, SelectMode.SelectRead) && clientSocket.Connected == true)
+                            //            {
+                            //                if (!string.IsNullOrWhiteSpace(sbSQL.ToString()))
+                            //                {
+                            //                    if (Check_Connection.CheckConnaction())
+                            //                    {
+                            //                        MPU.ReadSQL(sbSQL.ToString());
+                            //                    }
+                            //                    else
+                            //                    {
+                            //                        MPU.ReadSQL_dbMEStemp(sbSQL.ToString());
+                            //                    }
+                            //                }
+                            //            }
+                            //            #endregion
+                            //            break;
+                            //    }
+                            //}
                             #endregion
 
                             boolMESnetISrun = false;

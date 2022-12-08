@@ -563,7 +563,8 @@ namespace MES_N
 
         #region 更新dgv，回寫Dayno資料表
         bool bool_run;
-        string strSQLRumTime = "";
+        string strSQLDaynoRumTime = "";
+        StringBuilder sbSQL = new StringBuilder();
         private void tmrUpdateDT_Tick(object sender, EventArgs e)
         {
             Check_Connection.CheckConnaction();
@@ -608,9 +609,9 @@ namespace MES_N
                     }
 
                     #region 暫時註解
-                    //if (MPU.canInsertToDB && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
+                    //if (MPU.canInsertToDB && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLDaynoRumTime)
                     //{
-                    //    strSQLRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                    //    strSQLDaynoRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
                     //    for (int i = 0; i < MesNetSite_Sys.Length; i++)
                     //    {
                     //        StringBuilder sbSQL = new StringBuilder();
@@ -664,13 +665,40 @@ namespace MES_N
                     //}
                     #endregion
 
+                    #region 彙整所有執行緒的SQL指令，並統一寫入資料庫
+                    if (MPU.canInsertToDB)
+                    {
+                        //確定所有執行緒都已經產生SQL指令才寫進資料庫
+                        bool SQLDown = (MesNetSite_Sys.Where(t => !t.boolMESnetISrun).Count() == MesNetSite_Sys.Length);
+                        if (SQLDown)
+                        {
+                            int count = MPU.listSQL.Count();
+                            if (count > 0)
+                            {
+                                //把所有SQL指令組合再一起
+                                MPU.listSQL.ForEach(t => sbSQL.AppendLine(t));
+
+                                //檢查資料庫連線後寫入資料庫
+                                if (Check_Connection.CheckConnaction())
+                                    MPU.ReadSQL(sbSQL.ToString());
+                                else
+                                    MPU.ReadSQLToDT_dbMEStemp(sbSQL.ToString());
+
+                                //移除剛剛已經寫入完的SQL指令
+                                MPU.listSQL.RemoveRange(0, count);
+                            }
+                        }
+                    }
+                    #endregion
+
+                    #region 寫入最新DNO製tb_dayno資料表
                     // 若config.txt參數為true時，才將DNO寫入tb_dayno資料表，若為false則不寫入
                     if (MPU.canInsertDayno)
                     {
                         // 整點時紀錄最新DNO
-                        if (DateTime.Now.ToString("mm") == "00" && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLRumTime)
+                        if (DateTime.Now.ToString("mm") == "00" && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLDaynoRumTime)
                         {
-                            strSQLRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                            strSQLDaynoRumTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
 
                             MPU.ReadSQL(@"
                             INSERT INTO tb_dayno(DNO,SYSTIME,TYPE) VALUES( (SELECT MAX(DNO) FROM tb_recordslog),GETDATE(),'RE');
@@ -679,6 +707,7 @@ namespace MES_N
                             INSERT INTO tb_dayno(DNO,SYSTIME,TYPE) VALUES( (SELECT MAX(DNO) FROM tb_CSPrecordslog),GETDATE(),'CSP');");
                         }
                     }
+                    #endregion
 
                     #region 針對寫入敗的SQL語法等待10秒後再重送一次，還是失敗才寫入temp
                     //判斷是否有寫入失敗的SQL語法
