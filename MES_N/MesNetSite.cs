@@ -63,7 +63,9 @@ namespace MES_N
         public TcpClient TcpClient_Reader;
         public Socket clientSocket;
 
-
+        bool booleanInsert = true;
+        //記錄是否有填入values了
+        bool bool_add_Values = false;
         //確保同一時間只能建立一個連線
         bool bool_passive = false;
         //製作一個boolean 代表只有單一個動作在執行
@@ -73,6 +75,9 @@ namespace MES_N
         //執行緒是否成功啟動，啟動後會更新為true
         public bool bool_isThreadSet = false;
 
+        int byte_function_03_loop_index = 0;
+        int int_WLSLCS_Count = 0;
+        int int_DTS_temp_count = 0;
         //等待重新連線計數
         int int_ReconnectWait = 0;
         //485感測器通道
@@ -106,16 +111,22 @@ namespace MES_N
         //儲存Barcode值
         public string strBarcode = "";
         public string strBarcodeLight = "";
+        //記錄上次燈號是否為閃爍用
+        string Str_lcs = "";
+        //記錄insert過的燈號，重覆的話不傳
+        string Str_WLSLCS_F = "";
+        string[] str_DTS_temp = new string[8];
 
         //儲存送出的Socket指令
         byte[] byteCmdSend = new byte[100];
         //儲存回傳的Socket指令
         byte[] byteCmdReceive = new byte[100];
-        #endregion
-        
-
+        byte[] temCRC = new byte[2];
         byte[] Byte_Command_Sent_082 = new byte[8];
         byte[] Byte_Command_Sent_083 = new byte[9];
+        #endregion
+
+        #region 設定預設指令
         void CommandSet()
         {
             // 02 03 02 4C 00 04 84 55 讀取第1台 4通道 ID02
@@ -134,6 +145,7 @@ namespace MES_N
                 ByteArray[i] = Convert.ToByte(StringArray.Split(' ')[i], 16);
             }
         }
+        #endregion
 
         #region 建立Socket連線
         private delegate string ConnectSocketDelegate(IPEndPoint ipep, Socket sock);
@@ -339,9 +351,6 @@ namespace MES_N
                                         //根據不同的設備來執行不同的判斷連線方式
                                         switch (sclass)
                                         {
-                                            case "0"://寫假資料讓燈號亮黃燈
-                                                function_0();
-                                                break;
                                             case "1": //環境溫濕度
                                                 function_01();
                                                 break;
@@ -980,6 +989,30 @@ namespace MES_N
                 throw;
             }
         }
+
+        public static byte[] crc16(byte[] data, byte dataSize)
+        {
+            if (dataSize == 0)
+                throw new Exception("Exception");
+            byte[] temdata = new byte[dataSize + 2];
+            int xda, xdapoly;
+            int i, j, xdabit;
+            xda = 0xFFFF;
+            xdapoly = 0xA001;
+            for (i = 0; i < dataSize; i++)
+            {
+                xda ^= data[i];
+                for (j = 0; j < 8; j++)
+                {
+                    xdabit = (int)(xda & 0x01);
+                    xda >>= 1;
+                    if (xdabit == 1)
+                        xda ^= xdapoly;
+                }
+            }
+            temdata = new byte[2] { (byte)(xda & 0xFF), (byte)(xda >> 8) };
+            return temdata;
+        }
         #endregion
 
         #region 執行緒休息
@@ -1092,204 +1125,9 @@ namespace MES_N
         }
         #endregion
 
-        #region function_0 強制亮燈、給數據
-        void function_0()
-        {
+        #region 舊版本MES function 01-10 
 
-            try
-            {
-                Random rdm = new Random();
-                string value;
-                switch (dicSclass[strPort][intIndex].Split(';')[0].Split('_')[1])
-                {
-                    case "1": //環境溫濕度
-
-                        break;
-                    case "2": //條碼
-                        strStatic[intIndex] = "Available[0]@無資料:2";
-                        break;
-                    case "3":
-                        if (strDline == "P2")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        else if (strDline == "P3")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        else if (strDline == "CSP")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        strStatic[intIndex] = "10@0010:3";
-                        break;
-                    case "4":
-                        strStatic[intIndex] = "21@[03A9], (1)[2.28815628815629]158.096:4;24.319";
-                        break;
-                    case "5":
-                        
-                        break;
-                    case "6":
-
-                        break;
-                    case "7":
-
-                        break;
-                    case "8":
-                        strStatic[intIndex] = "21@(1)116(2)157(3)180(4)275(5)235(6)120(7)275(8)235(速度)0[2]:8;0";
-                        break;
-                    case "9": //正壓
-
-                        break;
-                    case "10": //負壓
-
-                        break;
-                    case "11": //流量計
-                        value = Math.Round(Convert.ToDouble(rdm.Next(20, 40) / 100), 2).ToString();
-                        strStatic[intIndex] = $"流量({value})";
-                        break;
-                    case "12": //燈號判斷
-                        if (strDline == "P2")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        else if (strDline == "P3")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        else if (strDline == "CSP")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        strStatic[intIndex] = "黃燈";
-                        break;
-                    case "13": //溫度
-                        value = rdm.Next(80, 100).ToString();
-                        strStatic[intIndex] = $"溫度({value})";
-                        break;
-                    case "14": //燈號控制
-
-                        break;
-                    case "15": //正壓、負壓(8_1、8_2、8_5、8_6)
-                        if (Convert.ToInt32(dicSclass[strPort][intIndex].Split(';')[0].Split('_')[2]) == 1 ||
-                            Convert.ToInt32(dicSclass[strPort][intIndex].Split(';')[0].Split('_')[2]) == 5 ||
-                            Convert.ToInt32(dicSclass[strPort][intIndex].Split(';')[0].Split('_')[2]) == 6)
-                        {
-                            value = Math.Round(Convert.ToDouble(rdm.Next(30, 60) / 100), 2).ToString();
-                            strStatic[intIndex] = $"正壓({value})";
-                        }
-                        else
-                        {
-
-                            value = Math.Round(Convert.ToDouble(rdm.Next(50, 80) / 100), 2).ToString();
-                            strStatic[intIndex] = $"正壓({value})";
-                        }
-                        break;
-                    case "16": //PC S1F1 燈號
-                        if (strDline == "P2")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        else if (strDline == "P3")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        else if (strDline == "CSP")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        strStatic[intIndex] = "黃燈";
-                        break;
-                    case "17": //PC S1F2 壓力
-                        value = Math.Round(Convert.ToDouble(rdm.Next(30, 60) / 100), 2).ToString();
-                        strStatic[intIndex] = $"正壓({value})";
-                        break;
-                    case "18": //PC S1F3 流量
-                        value = Math.Round(Convert.ToDouble(rdm.Next(20, 40) / 100), 2).ToString();
-                        strStatic[intIndex] = $"流量({value})";
-                        break;
-                    case "19": //PC S1F4 溫度
-                        value = rdm.Next(80, 100).ToString();
-                        strStatic[intIndex] = $"溫度({value})";
-                        break;
-                    case "20": //PC S1F5 吸嘴阻值
-                        value = Math.Round(Convert.ToDouble(rdm.Next(0, 10) / 100), 2).ToString();
-                        strStatic[intIndex] = $"吸嘴阻值({value})";
-                        break;
-                    case "21": //PC S1F6 H-Judge讀值
-                        value = Math.Round(Convert.ToDouble(rdm.Next(0, 20) / 100), 2).ToString();
-                        strStatic[intIndex] = $"H-Judge讀值({value})";
-                        break;
-                    case "22": //PC S1F7 螢幕辨識參數(Temperature, Power, force, Time)
-                        value = rdm.Next(80, 100).ToString();
-                        strStatic[intIndex] = $"溫度({value})";
-                        break;
-                    case "23": //BrainChild溫度
-                        value = rdm.Next(80, 100).ToString();
-                        strStatic[intIndex] = $"溫度({value})";
-                        break;
-                    case "24": //PC S1F8 舉離機(NMPA, NMPB)
-
-                        break;
-                    case "25": //新氣壓頭讀取
-
-                        break;
-                    case "26":
-                        if (strDline == "P2")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        else if (strDline == "P3")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        else if (strDline == "CSP")
-                        {
-                            strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-                        }
-                        strStatic[intIndex] = "黃燈";
-                        break;
-                    case "27": //晶圓清洗機#1 燈號判斷
-
-                        break;
-                    case "28": //電漿蝕刻機#2 燈號判斷
-
-                        break;
-                    case "29": //Cello RIE反應式離子蝕刻機-1 燈號判斷
-
-                        break;
-                    case "30": //廠務設備 氮氣流量
-
-                        break;
-                    case "32": //廠務設備 水流量
-
-                        break;
-                    case "33": //調頻機燈號判斷
-
-                        break;
-                    case "34": //清洗機水阻值
-
-                        break;
-                    default:
-                        //SetStatus();
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                if (ex.Source != null)
-                {
-                    strStatic[intIndex] = MPU.str_ErrorMessage[1];
-
-                    strCmdSQL = "";
-
-                    Console.WriteLine("M0312:Exception source: {0}", ex.Source);
-                }
-            }
-        }
-        #endregion
-
-        #region function_01 環境溫濕度
+        #region 01 環境溫濕度
         //1 環境溫濕度
         /// <summary>
         /// 環境溫濕度
@@ -1312,7 +1150,7 @@ namespace MES_N
 
                 int int_Net_Available = clientSocket.Available;
 
-                if (int_Net_Available == 13)
+                if (int_Net_Available >= 13)
                 {
                     clientSocket.Receive(byteCmdReceive, 0, int_Net_Available, SocketFlags.None);
 
@@ -1321,34 +1159,21 @@ namespace MES_N
                     //濕度
                     string str_H = Convert.ToInt32(String.Format("{0:X2}", byteCmdReceive[11]) + String.Format("{0:X2}", byteCmdReceive[12]), 16).ToString().PadLeft(4, '0'); ;
 
-                    //221209
-                    if (strTID == "1001-001")
-                    {
 
-                        strCmdSQL = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID.Split('.')[0].ToString() + "','" + str_T + "',GETDATE()) ";
+                    strCmdSQL = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID.Split('.')[0].ToString() + "','" + str_T + "',GETDATE()) ";
 
-                        strCmdSQL += ", ('" + strTID + "','" + strDIP + "','" + strSID.Split('.')[1].ToString() + "','" + str_H + "',GETDATE())";
+                    strCmdSQL += ", ('" + strTID + "','" + strDIP + "','" + strSID.Split('.')[1].ToString() + "','" + str_H + "',GETDATE())";
 
-                        strStatic[intIndex] = str_T + ":" + str_H + "[" + strSclass + "]";
-                    }
-                    else if (strTID == "3063-001") //銀膠冰箱
-                    {
-                        str_T = ((Convert.ToInt32(String.Format("{0:X4}", 0xFFFF), 16) - Convert.ToInt32(String.Format("{0:X2}", byteCmdReceive[9]) + String.Format("{0:X2}", byteCmdReceive[10]), 16)) * (-0.1)).ToString();
-
-                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-                            
-                        strCmdSQL += ",('" + strTID + "','" + strDIP + "','LCS001','0010',GETDATE(),'" + strNote.Split('_')[0] + "_燈號') ";
-                    
-
-                        strStatic[intIndex] = str_T + "[" + strSclass + "]";
-                    }
-                    else
-                    {
-                        strStatic[intIndex] = str_T + ":" + str_H + "[" + strSclass + "]";
-                    }
+                    strStatic[intIndex] = str_T + ":" + str_H + "[" + strSclass + "]";
 
 
                 }
+                else
+                {
+                    strStatic[intIndex] = MPU.str_ErrorMessage[5];
+                    strCmdSQL = "";
+                }
+
             }
             catch (Exception EX)
             {
@@ -1361,8 +1186,6 @@ namespace MES_N
             }
         }
         #endregion
-
-        #region 舊版本MES function 02-10 
 
         #region 02 條碼 
         void function_02()
@@ -1403,18 +1226,8 @@ namespace MES_N
                     //如果非空字串的話
                     if (str_T != "")
                     {
-                        if (strDline == "P2")
-                        {
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE()) ; ";
 
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE()) ; ";
-
-                        }
-                        if (strDline == "P3")
-                        {
-
-                            strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE()) ;";
-
-                        }
 
 
                         //171119 
@@ -1426,14 +1239,8 @@ namespace MES_N
 
                         String Str_SQL_sid_X_WLS = "SELECT S_ID FROM [dbo].[tb_sensors_rules] WHERE d_ID =  (SELECT d_ID FROM   [dbo].[tb_sensors_rules]  WHERE s_ID = '" + strSID + "') AND S_ID LIKE '%WLS%'";
 
-                        if (strDline == "P2")
-                        {
-                            strCmdSQL += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "',(" + Str_SQL_sid_X_WLS + "),'" + light_Str + "',GETDATE(),'" + strNote + "') ;";
-                        }
-                        else if (strDline == "P3")
-                        {
-                            strCmdSQL += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "',(" + Str_SQL_sid_X_WLS + "),'" + light_Str + "',GETDATE(),'" + strNote + "') ;";
-                        }
+                        strCmdSQL += $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "',(" + Str_SQL_sid_X_WLS + "),'" + light_Str + "',GETDATE(),'" + strNote + "') ;";
+
                         strBarcode = str_T;
                     }
                     else
@@ -1489,23 +1296,8 @@ namespace MES_N
         }
         #endregion
 
-        Boolean booleanInsert = true;
-
-        int byte_function_03_loop_index = 0;
-
-        string str_ttt = "";
-
-        //記錄上次燈號是否為閃爍用
-
-        string Str_lcs = "";
-
-        //記錄insert過的燈號，重覆的話不傳
-        string Str_WLSLCS_F = "";
-
-        int int_WLSLCS_Count = 0;
-
-        //
-        void SetOrangeLight()
+        #region 傳送黃燈訊號
+        void SetYellowLight()
         {
             byte[] byte_Command_wlslcs = new byte[5];
 
@@ -1514,32 +1306,32 @@ namespace MES_N
             byte_Command_wlslcs[2] = 49;
             byte_Command_wlslcs[3] = 10;
             byte_Command_wlslcs[4] = 13;
-            NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+            clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
 
             byte_Command_wlslcs[0] = 48;
             byte_Command_wlslcs[1] = 53;
             byte_Command_wlslcs[2] = 49;
             byte_Command_wlslcs[3] = 10;
             byte_Command_wlslcs[4] = 13;
-            NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+            clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
 
             byte_Command_wlslcs[0] = 48;
             byte_Command_wlslcs[1] = 52;
             byte_Command_wlslcs[2] = 48;
             byte_Command_wlslcs[3] = 10;
             byte_Command_wlslcs[4] = 13;
-            NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+            clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
 
             byte_Command_wlslcs[0] = 48;
             byte_Command_wlslcs[1] = 51;
             byte_Command_wlslcs[2] = 48;
             byte_Command_wlslcs[3] = 10;
             byte_Command_wlslcs[4] = 13;
-            NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 5);
+            clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
         }
+        #endregion
 
-
-        #region 03 燈號函數 
+        #region 03 燈號函數
         void function_03()
         {
             try
@@ -1552,7 +1344,7 @@ namespace MES_N
                     if (strBarcodeLight == "00000000")
                     {
                         //傳送橘燈訊號
-                        SetOrangeLight();
+                        SetYellowLight();
 
                     }
                     else
@@ -1608,7 +1400,7 @@ namespace MES_N
                 //
                 if (int_WLSLCS_Count == 0 && strSID.Substring(0, 3) == "WLS")
                 {
-                    SetOrangeLight();
+                    SetYellowLight();
                 }
 
 
@@ -1732,7 +1524,7 @@ namespace MES_N
                         }
 
                         //燈號結果處理完畢
-                        str_ttt = str_T;
+                        //str_ttt = str_T;
 
                         strStatic[intIndex] = int_Net_Available + "@" + str_T + ":" + strSclass;
 
@@ -1744,17 +1536,7 @@ namespace MES_N
                             //如果String_SQLcommand 不是空字串的話，直接加入values的值到字串尾巴即可。
                             if (strCmdSQL == "")
                             {
-                                if (strDline == "P2")
-                                {
-
-                                    strCmdSQL += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-
-                                }
-                                else if (strDline == "P3")
-                                {
-                                    strCmdSQL += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-
-                                }
+                                strCmdSQL += $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
                             }
                             else
                             {
@@ -1763,52 +1545,21 @@ namespace MES_N
                             }
                         }
                         else if (strSID == "WLS002")
-                        {
-                            if (strDline == "P2")
-                            {
+                        {                                
+                            strCmdSQL += $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
 
-                                strCmdSQL += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-
-
-                            }
-                            else if (strDline == "P3")
-                            {
-                                strCmdSQL += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-
-                            }
                         }
                         else
-                        {
-                            if (strDline == "P2")
-                            {
+                        {                                
+                            strCmdSQL += $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
 
-                                strCmdSQL += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-
-
-                            }
-                            else if (strDline == "P3")
-                            {
-                                strCmdSQL += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-
-                            }
                             strStatic[intIndex] = int_Net_Available + "@0010:" + strSclass;
                         }
 
                     }
                     else
                     {
-                        if (strDline == "P2")
-                        {
-
-                            strCmdSQL += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-
-
-                        }
-                        else if (strDline == "P3")
-                        {
-                            strCmdSQL += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-
-                        }
+                        strCmdSQL += $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
 
                         strStatic[intIndex] = int_Net_Available + "@0010:" + strSclass;
                     }
@@ -1887,20 +1638,7 @@ namespace MES_N
                         clientSocket.Receive(byteCmdReceive, 0, 10, SocketFlags.None);
                     }
 
-
-
-                    if (strDline == "P2")
-                    {
-
-                        strCmdSQL += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-
-
-                    }
-                    else if (strDline == "P3")
-                    {
-                        strCmdSQL += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
-
-                    }
+                    strCmdSQL += $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','0010',GETDATE(),'" + strNote + "') ";
 
                     strStatic[intIndex] = int_Net_Available + "@0010:" + strSclass;
                 }
@@ -1923,36 +1661,6 @@ namespace MES_N
 
         }
         #endregion
-
-        public static byte[] crc16(byte[] data, byte dataSize)
-        {
-            if (dataSize == 0)
-                throw new Exception("Exception");
-            byte[] temdata = new byte[dataSize + 2];
-            int xda, xdapoly;
-            int i, j, xdabit;
-            xda = 0xFFFF;
-            xdapoly = 0xA001;
-            for (i = 0; i < dataSize; i++)
-            {
-                xda ^= data[i];
-                for (j = 0; j < 8; j++)
-                {
-                    xdabit = (int)(xda & 0x01);
-                    xda >>= 1;
-                    if (xdabit == 1)
-                        xda ^= xdapoly;
-                }
-            }
-            temdata = new byte[2] { (byte)(xda & 0xFF), (byte)(xda >> 8) };
-            return temdata;
-        }
-
-        byte[] temCRC = new byte[2];
-
-        string[] str_DTS_temp = new string[8];
-
-        int int_DTS_temp_count = 0;
 
         #region 04 溫度 
         //221209 進度0
@@ -2088,17 +1796,7 @@ namespace MES_N
 
 
 
-
-                            if (strCmdSQL == "" && strDline == "P2")
-                            {
-                                strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-
-                            }
-                            if (strCmdSQL == "" && strDline == "P3")
-                            {
-                                strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-
-                            }
+                            strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
 
                             if (strCmdSQL != "" && xx != 0)
                             {
@@ -2160,8 +1858,6 @@ namespace MES_N
 
         }
         #endregion
-
-        string[] str_KPS_temp = new string[8];
 
         #region 05 空壓KPS
         //221209 補對數值
@@ -2309,15 +2005,7 @@ namespace MES_N
                             //降低精準度至小數點後1位。
                             if (strCmdSQL == "")
                             {
-                                //str_KPS_temp[xx] = (double_Mpa * 100).ToString("F1");
-                                if (strDline == "P2")
-                                {
-                                    strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-                                }
-                                if (strDline == "P3")
-                                {
-                                    strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-                                }
+                                strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                             }
 
                             //161208 因為發現有空values的狀況，加上一個String_SQLcommand_values來暫存是否有資料填入，來做為是否加入[ , ]的區隔符號。
@@ -2333,7 +2021,6 @@ namespace MES_N
                                 //}
                             }
 
-                            str_KPS_temp[xx] = (double_Mpa * 100).ToString("F1");
 
                             if (strSID.Split('.')[xx] == "KPS004" || strSID.Split('.')[xx] == "KPS006" || strSID.Split('.')[xx] == "KPS021" || strSID.Split('.')[xx] == "KPS019")
                             {
@@ -2434,14 +2121,7 @@ namespace MES_N
 
                 if (int_Net_Available > 20)
                 {
-                    if (strDline == "P2")
-                    {
-                        strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-                    }
-                    if (strDline == "P3")
-                    {
-                        strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-                    }
+                    strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
 
                     clientSocket.Receive(byteCmdReceive, 0, int_Net_Available, SocketFlags.None);
 
@@ -2547,17 +2227,55 @@ namespace MES_N
         }
         #endregion
 
-        #region 07 NULL 
+        #region 07 銀膠冰箱溫度 
         void function_07()
         {
+            try
+            {
+                //221209先RECEIVE清空
+                byteCmdSend = strCmdEHCEHD.Split(' ').Select(t => Convert.ToByte(t, 16)).ToArray();
 
+                clientSocket.Send(byteCmdSend, 0, strCmdEHCEHD.Split(' ').Length, System.Net.Sockets.SocketFlags.None);
+
+                for (int i = 0; i < 50; i++)
+                {
+                    System.Threading.Thread.Sleep(10);
+
+                    System.Windows.Forms.Application.DoEvents();
+                }
+
+                int int_Net_Available = clientSocket.Available;
+
+                if (int_Net_Available >= 13)
+                {
+                    clientSocket.Receive(byteCmdReceive, 0, int_Net_Available, SocketFlags.None);
+
+                    //溫度
+                    string str_T = ((Convert.ToInt32(String.Format("{0:X4}", 0xFFFF), 16) - Convert.ToInt32(String.Format("{0:X2}", byteCmdReceive[9]) + String.Format("{0:X2}", byteCmdReceive[10]), 16)) * (-0.1)).ToString();
+
+                    strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
+
+                    //strCmdSQL += ",('" + strTID + "','" + strDIP + "','LCS001','0010',GETDATE(),'" + strNote.Split('_')[0] + "_燈號') ";
+
+                    strStatic[intIndex] = str_T + "[" + strSclass + "]";
+                }
+                else
+                {
+                    strStatic[intIndex] = MPU.str_ErrorMessage[5];
+                    strCmdSQL = "";
+                }
+            }
+            catch (Exception EX)
+            {
+                if (EX.Source != null)
+                {
+                    strStatic[intIndex] = "Ex:" + EX.Source;
+
+                    Console.WriteLine("M0312:Exception source: {0}", EX.Source);
+                }
+            }
         }
         #endregion
-
-        byte[] Byte_Command_Sent_DTS8 = new byte[100];
-
-        //記錄是否有填入values了
-        Boolean bool_add_Values = false;
 
         #region 08 溫度4通道
         void function_DTS_8()
@@ -2631,14 +2349,9 @@ namespace MES_N
 
                             int_dec = Convert.ToInt16(str_hex, 16);
 
-                            if (strCmdSQL == "" && strDline == "P2")
+                            if (strCmdSQL == "")
                             {
-                                strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-                                bool_add_Values = false;
-                            }
-                            if (strCmdSQL == "" && strDline == "P3")
-                            {
-                                strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                                 bool_add_Values = false;
                             }
 
@@ -2721,14 +2434,9 @@ namespace MES_N
                             int_dec = Convert.ToInt16(str_hex, 16);
 
                             //看那個製造部門 資料表
-                            if (strCmdSQL == "" && strDline == "P2")
+                            if (strCmdSQL == "")
                             {
-                                strCmdSQL = "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-                                bool_add_Values = false;
-                            }
-                            if (strCmdSQL == "" && strDline == "P3")
-                            {
-                                strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                                strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                                 bool_add_Values = false;
                             }
 
@@ -2829,14 +2537,9 @@ namespace MES_N
                         //03/12調整現場失敗，改用後台補充值+2
                         str_T += "(速度)" + double_DCvi.ToString() + "[" + (double_DCvi / MPU.MPU_int_numericUpDown1 + 2) + "]";
 
-                        if (strCmdSQL == "" && strDline == "P2")
+                        if (strCmdSQL == "")
                         {
-                            strCmdSQL = "; INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
-                            bool_add_Values = false;
-                        }
-                        if (strCmdSQL == "" && strDline == "P3")
-                        {
-                            strCmdSQL = "; INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
+                            strCmdSQL = $"; INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE])   VALUES ";
                             bool_add_Values = false;
                         }
 
@@ -2919,9 +2622,9 @@ namespace MES_N
 
                     double_Mpa = Math.Round(double_Mpa, 2);
 
-                    strStatic[intIndex] = "流量 (" + double_Mpa.ToString() + ")";
+                    strStatic[intIndex] = $"流量 ({double_Mpa.ToString()})";
 
-                    strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + double_Mpa.ToString() + "',GETDATE(),'" + strNote + "') ";
+                    strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{double_Mpa.ToString()}',GETDATE(),'{strNote}') ";
                 }
                 else
                 {
@@ -2999,28 +2702,28 @@ namespace MES_N
                         //紅燈(停止中)
                         strStatic[intIndex] = "紅燈";
                         str_light = "1000";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else if (double_Mpa_2 > 20000)
                     {
                         //綠燈(運行中)
                         strStatic[intIndex] = "綠燈";
                         str_light = "0100";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else if ((double_Mpa_1 < 20000 && double_Mpa_2 < 20000) && (double_Mpa_1 > 0 && double_Mpa_2 > 0))
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                 }
                 else
@@ -3037,7 +2740,7 @@ namespace MES_N
 
                     strCmdSQL = "";
 
-                    Console.WriteLine("Exception source: {0}", EX.Source + "," + EX.Message);
+                    Console.WriteLine("Exception source: {0}", EX.Source + EX.Message);
                 }
             }
         }
@@ -3078,9 +2781,9 @@ namespace MES_N
                         //if (str_values_temp != str_T + str_H)
                         //{
 
-                        //    strCmdSQL = "INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID.Split('.')[0].ToString() + "','" + str_T + "',GETDATE()) ";
+                        //    strCmdSQL = $"INSERT INTO [dbo].[tb_recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME])     VALUES ('{strTID}','{strDIP}','{strSID.Split('.')[0].ToString()}','{str_T}',GETDATE()) ";
 
-                        //    strCmdSQL += ", ('" + strTID + "','" + strDIP + "','" + strSID.Split('.')[1].ToString() + "','" + str_H + "',GETDATE())";
+                        //    strCmdSQL += ", ('{strTID}','{strDIP}','{strSID.Split('.')[1].ToString()}','{str_H}',GETDATE())";
 
                         //    str_values_temp = str_T + str_H;
                         //}
@@ -3094,9 +2797,9 @@ namespace MES_N
                         str_3 = str_3.Replace("88", "N/A");
                         str_4 = str_4.Replace("88", "N/A");
                         //Console.WriteLine(strStatic);
-                        strStatic[intIndex] = str_1 + " : " + str_2 + " : " + str_3 + " : " + str_4;
+                        strStatic[intIndex] = $"{str_1}:{str_2}:{str_3}:{str_4}";
 
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + strStatic[intIndex].Trim() + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{strStatic[intIndex].Trim()}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3137,7 +2840,7 @@ namespace MES_N
             {
                 if (EX.Source != null)
                 {
-                    strStatic[intIndex] = "Ex:" + EX.Source + EX.Message;
+                    strStatic[intIndex] = $"Ex:{EX.Source + EX.Message}";
 
                     Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss[{0}]"), EX.Source + EX.Message);
                 }
@@ -3195,17 +2898,17 @@ namespace MES_N
 
                     if (double_Mpa >= 0)
                     {
-                        strStatic[intIndex] = "正壓 (" + double_Mpa.ToString() + ")";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + double_Mpa.ToString() + "',GETDATE(),'" + strNote + "') ";
+                        strStatic[intIndex] = $"正壓 ({double_Mpa.ToString()})";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{double_Mpa.ToString()}',GETDATE(),'{strNote}') ";
                     }
                     else if (double_Mpa < 0)
                     {
-                        strStatic[intIndex] = "負壓 (" + double_Mpa.ToString() + ")";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + double_Mpa.ToString() + "',GETDATE(),'" + strNote + "') ";
+                        strStatic[intIndex] = $"負壓 ({double_Mpa.ToString()})";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{double_Mpa.ToString()}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
-                        strStatic[intIndex] = "(" + double_Mpa.ToString() + ")";
+                        strStatic[intIndex] = $"({double_Mpa.ToString()})";
                         strCmdSQL = "";
                     }
                 }
@@ -3253,19 +2956,19 @@ namespace MES_N
                     {
                         //綠燈(運行中)
                         strStatic[intIndex] = "綠燈";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + "0100" + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','0100',GETDATE(),'{strNote}') ";
                     }
                     else if (temp == "Yellow")
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + "0010" + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','0010',GETDATE(),'{strNote}') ";
                     }
                     else if (temp == "Red")
                     {
                         //紅燈(停止中)
                         strStatic[intIndex] = "紅燈";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + "1000" + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','1000',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3316,11 +3019,11 @@ namespace MES_N
                     if (temp != "NA" && !string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp) && decimal.TryParse(temp, out decimal n))
                     {
                         if (Convert.ToDouble(temp) >= 0)
-                            strStatic[intIndex] = "正壓 (" + temp + ")";
+                            strStatic[intIndex] = $"正壓 ({temp})";
                         else
-                            strStatic[intIndex] = "負壓 (" + temp + ")";
+                            strStatic[intIndex] = $"負壓 ({temp})";
 
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + temp + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{temp}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3373,9 +3076,9 @@ namespace MES_N
 
                     if (!string.IsNullOrWhiteSpace(double_Mpa.ToString()) && !string.IsNullOrEmpty(double_Mpa.ToString()) && decimal.TryParse(double_Mpa.ToString(), out decimal n))
                     {
-                        strStatic[intIndex] = "流量 (" + double_Mpa.ToString() + ")";
+                        strStatic[intIndex] = $"流量 ({double_Mpa.ToString()})";
 
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + double_Mpa.ToString() + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{double_Mpa.ToString()}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3427,9 +3130,9 @@ namespace MES_N
                     temp = temp.Replace("NA", "0");
                     if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp) && decimal.TryParse(temp, out decimal n))
                     {
-                        strStatic[intIndex] = "溫度 (" + temp + ")";
+                        strStatic[intIndex] = $"溫度 ({temp})";
 
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + temp.Split('/')[0] + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{temp.Split('/')[0]}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3482,9 +3185,9 @@ namespace MES_N
 
                     if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp) && decimal.TryParse(temp, out decimal n))
                     {
-                        strStatic[intIndex] = "種晶吸嘴阻值 (" + temp + ")";
+                        strStatic[intIndex] = $"種晶吸嘴阻值 ({temp})";
 
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + temp + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{temp}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3537,9 +3240,9 @@ namespace MES_N
 
                     if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp) && decimal.TryParse(temp, out decimal n))
                     {
-                        strStatic[intIndex] = "H-Judge讀值 (" + temp + ")";
+                        strStatic[intIndex] = $"H-Judge讀值 ({temp})";
 
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + temp + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{temp}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3593,9 +3296,9 @@ namespace MES_N
 
                         if (!string.IsNullOrWhiteSpace(temp[1]) && !string.IsNullOrEmpty(temp[1]) && decimal.TryParse(temp[1], out decimal n))
                         {
-                            strStatic[intIndex] = "溫度 (" + temp[1] + ")";
+                            strStatic[intIndex] = $"溫度 ({temp[1]})";
 
-                            strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + temp[1] + "',GETDATE(),'" + strNote + "') ";
+                            strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{temp[1]}',GETDATE(),'{strNote}') ";
                         }
                         else
                         {
@@ -3649,8 +3352,8 @@ namespace MES_N
                     temp = (((SH - SL) / 65535) * Convert.ToInt32(hex, 16)) + SL - 1;
                     if (temp > 0)
                     {
-                        strStatic[intIndex] = "溫度(" + Math.Round(temp, 0).ToString() + ")";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + strStatic[intIndex].Trim() + "',GETDATE(),'" + strNote + "') ";
+                        strStatic[intIndex] = $"溫度({Math.Round(temp, 0).ToString()})";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{strStatic[intIndex].Trim()}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3702,8 +3405,8 @@ namespace MES_N
                     if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp))
                     {
                         //綠燈(運行中)
-                        strStatic[intIndex] = "S1F8 (" + temp + ")";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + temp + "',GETDATE(),'" + strNote + "') ";
+                        strStatic[intIndex] = $"S1F8 ({temp})";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{temp}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -3781,17 +3484,17 @@ namespace MES_N
 
                     if (double_Mpa > 0)
                     {
-                        strStatic[intIndex] = "正壓 (" + double_Mpa.ToString() + ")";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + double_Mpa.ToString() + "',GETDATE(),'" + strNote + "') ";
+                        strStatic[intIndex] = $"正壓 ({double_Mpa.ToString()})";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{double_Mpa.ToString()}',GETDATE(),'{strNote}') ";
                     }
                     else if (double_Mpa < 0)
                     {
-                        strStatic[intIndex] = "負壓 (" + double_Mpa.ToString() + ")";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + double_Mpa.ToString() + "',GETDATE(),'" + strNote + "') ";
+                        strStatic[intIndex] = $"負壓 ({double_Mpa.ToString()})";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{double_Mpa.ToString()}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
-                        strStatic[intIndex] = "(" + double_Mpa.ToString() + ")";
+                        strStatic[intIndex] = $"({double_Mpa.ToString()})";
                         strCmdSQL = "";
                     }
                 }
@@ -3829,7 +3532,7 @@ namespace MES_N
                     //連線成功則顯示黃燈
                     strStatic[intIndex] = "黃燈";
                     string str_light = "0010";
-                    strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                    strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                 }
                 else
                 {
@@ -3900,28 +3603,28 @@ namespace MES_N
                         //綠燈(運行中)
                         strStatic[intIndex] = "綠燈";
                         str_light = "0100";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else if (double_Mpa_1 < 20000 && double_Mpa_2 > 20000)
                     {
                         //紅燈(停止中)
                         strStatic[intIndex] = "紅燈";
                         str_light = "1000";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else if ((double_Mpa_1 < 20000 && double_Mpa_2 < 20000) && (double_Mpa_1 > 0 && double_Mpa_2 > 0))
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                 }
                 else
@@ -3936,7 +3639,7 @@ namespace MES_N
                 {
                     strStatic[intIndex] = MPU.str_ErrorMessage[1];
                     strCmdSQL = "";
-                    Console.WriteLine("Exception source: {0}", EX.Source + "," + EX.Message);
+                    Console.WriteLine("Exception source: {0}", EX.Source + EX.Message);
                 }
             }
         }
@@ -3990,7 +3693,7 @@ namespace MES_N
                         //綠燈(運行中)
                         strStatic[intIndex] = "綠燈";
                         str_light = "0100";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
 
                     }
                     else if (double_Mpa_2 > 20000)
@@ -3998,21 +3701,21 @@ namespace MES_N
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else if ((double_Mpa_1 < 20000 && double_Mpa_2 < 20000) && (double_Mpa_1 > 0 && double_Mpa_2 > 0))
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                 }
                 else
@@ -4027,7 +3730,7 @@ namespace MES_N
                 {
                     strStatic[intIndex] = MPU.str_ErrorMessage[1];
                     strCmdSQL = "";
-                    Console.WriteLine("Exception source: {0}", EX.Source + "," + EX.Message);
+                    Console.WriteLine("Exception source: {0}", EX.Source + EX.Message);
                 }
             }
         }
@@ -4082,28 +3785,28 @@ namespace MES_N
                         //綠燈(運行中)
                         strStatic[intIndex] = "綠燈";
                         str_light = "0100";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else if (double_Mpa_2 > 20000)
                     {
                         //紅燈(停止中)
                         strStatic[intIndex] = "紅燈";
                         str_light = "1000";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else if ((double_Mpa_1 < 20000 && double_Mpa_2 < 20000) && (double_Mpa_1 > 0 && double_Mpa_2 > 0))
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
                         //黃燈(暫停中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                 }
                 else
@@ -4118,7 +3821,7 @@ namespace MES_N
                 {
                     strStatic[intIndex] = MPU.str_ErrorMessage[1];
                     strCmdSQL = "";
-                    Console.WriteLine("Exception source: {0}", EX.Source + "," + EX.Message);
+                    Console.WriteLine("Exception source: {0}", EX.Source + EX.Message);
                 }
             }
         }
@@ -4157,14 +3860,14 @@ namespace MES_N
                         //黃燈(待機中)
                         strStatic[intIndex] = "黃燈";
                         str_light = "0010";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                     else if (double_Mpa < 0)
                     {
                         //綠燈(運行中)
                         strStatic[intIndex] = "綠燈";
                         str_light = "0100";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_light + "',GETDATE(),'" + strNote + "') ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_light}',GETDATE(),'{strNote}') ";
                     }
                 }
                 else
@@ -4221,8 +3924,8 @@ namespace MES_N
                     //將感測值取四捨五入制小數點第一位
                     double_Mpa = Math.Round(double_Mpa, 1);
 
-                    strStatic[intIndex] = "水阻值 (" + double_Mpa.ToString() + ")";
-                    strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + double_Mpa.ToString() + "',GETDATE(),'" + strNote + "') ";
+                    strStatic[intIndex] = $"水阻值 ({double_Mpa.ToString()})";
+                    strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{double_Mpa.ToString()}',GETDATE(),'{strNote}') ";
                 }
                 else
                 {
@@ -4267,8 +3970,8 @@ namespace MES_N
                     if (!string.IsNullOrWhiteSpace(temp) && !string.IsNullOrEmpty(temp))
                     {
                         //綠燈(運行中)
-                        strStatic[intIndex] = "S1F8 (" + temp + ")";
-                        strCmdSQL = "INSERT INTO [dbo].[tb_CSPrecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + temp + "',GETDATE(),'" + strNote + "') ";
+                        strStatic[intIndex] = $"S1F8 ({temp})";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME],[NOTE]) VALUES ('{strTID}','{strDIP}','{strSID}','{temp}',GETDATE(),'{strNote}') ";
                     }
                     else
                     {
@@ -4356,7 +4059,7 @@ namespace MES_N
                     {
                         //if (String_Dline == "P2")
                         //{
-                        strCmdSQL = "INSERT INTO [dbo].[tb_FArecordslog] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE()) ; ";
+                        strCmdSQL = "INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_T}',GETDATE());";
 
                         //}
                         //if (String_Dline == "P3")
@@ -4475,7 +4178,7 @@ namespace MES_N
                 //如果非空字串的話
                 if (str_T != "")
                 {
-                    strCmdSQL = "INSERT INTO [dbo].[tb_FArecordslog] ([DID]           ,[DIP]           ,[SID]           ,[DVALUE]           ,[SYSTIME])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE()) ; ";
+                    strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_T}',GETDATE()) ; ";
                 }
                 else
                 {
@@ -4571,7 +4274,7 @@ namespace MES_N
                     {
                         //if (String_Dline == "P2")
                         //{
-                        strCmdSQL = "INSERT INTO [dbo].[tb_FArecordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME]) VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE()) ; ";
+                        strCmdSQL = $"INSERT INTO [dbo].[tb_{strDline.Trim()}recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME]) VALUES ('{strTID}','{strDIP}','{strSID}','{str_T}',GETDATE()) ; ";
 
                         //}
                         //if (String_Dline == "P3")
