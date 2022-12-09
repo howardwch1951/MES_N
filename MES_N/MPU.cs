@@ -27,23 +27,15 @@ namespace MES_N
 
         public static Boolean wme3 = false;
 
-        public static Boolean isStatusChange = false;
-
         public static bool canInsertDayno, canInsertToDB;
 
-        public static BindingSource bs_MainTable = new BindingSource();
+        public static DataTable dtMainTable = new DataTable();
 
-        public static BindingSource bs_CurrentLog = new BindingSource();
+        public static DataTable dtCurrentLog = new DataTable();
 
-        public static BindingSource bs_HistoryLog = new BindingSource();
+        public static DataTable dtHistoryLog = new DataTable();
 
-        public static DataTable dt_MainTable = new DataTable();
-
-        public static DataTable dt_CurrentLog = new DataTable();
-
-        public static DataTable dt_HistoryLog = new DataTable();
-
-        public static ConcurrentDictionary<int, string> dic_ReceiveMessage = new ConcurrentDictionary<int, string>();
+        public static ConcurrentDictionary<int, string> dicDgvValue = new ConcurrentDictionary<int, string>();
 
         public static Dictionary<string, DateTime> dicSQL = new Dictionary<string, DateTime>();
 
@@ -52,10 +44,6 @@ namespace MES_N
         public static String str_Barcode = "";
 
         public static int intSQLCount = 0;
-
-        public static List<String> list_HistoryLog = new List<String>();
-
-        public static List<String> list_CurrentLog = new List<String>();
 
         public static List<String> listSQL = new List<String>();
 

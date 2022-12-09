@@ -88,18 +88,13 @@ namespace MES_N
 
         //儲存下一次執行的時間
         DateTime NextRumTime = new DateTime();
-        //下一次重新連線時間
-        DateTime ReconnectWaitTime = new DateTime();
         List<DateTime> listDisconnectTime = new List<DateTime>();
 
         //儲存SQL指令
         public StringBuilder sbSQL = new StringBuilder();
 
         //儲存Form整理好的IP和Port字典
-        public Dictionary<String, List<String>> dicDeviceList = new Dictionary<String, List<String>>();
-
-        //儲存每一個感測器狀態卡在連線中的計數
-        List<int> intConnectTimes = new List<int>();
+        public Dictionary<String, List<String>> dicSclass = new Dictionary<String, List<String>>();
 
         List<int> listIndex = new List<int>();
 
@@ -140,10 +135,8 @@ namespace MES_N
             }
         }
 
+        #region 建立Socket連線
         private delegate string ConnectSocketDelegate(IPEndPoint ipep, Socket sock);
-        /// <summary>
-        /// 與網路盒建立連結
-        /// </summary>
         public void SocketClientConnect()
         {
             if (bool_passive == false && bool_AutoRun == true)
@@ -292,16 +285,16 @@ namespace MES_N
 
             return exmessage;
         }
+        #endregion
 
-
-        //執行緒主要執行區塊
+        #region 主執行緒
         public void MesNetSiteRunning()
         {
             //初次啟動執行緒先建立連線
             SocketClientConnect();
 
             //事先紀錄卡在連線中的設備要顯示連線失敗的時間(30秒後)
-            listDisconnectTime = dicDeviceList[strPort].Select(t => DateTime.Now.AddSeconds(30)).ToList();
+            listDisconnectTime = dicSclass[strPort].Select(t => DateTime.Now.AddSeconds(30)).ToList();
 
             while (bool_AutoRun)
             {
@@ -315,15 +308,18 @@ namespace MES_N
                         {
                             boolMESnetISrun = true;
 
+                            //每50秒收集一次設備數據
+                            NextRumTime = DateTime.Now.AddSeconds(50);
+
                             // 清除舊的SQL語法
                             sbSQL.Clear();
                             strCmdSQL = "";
                             listIndex.Clear();
 
-                            Array.Resize(ref strStatic, Convert.ToInt32(dicDeviceList[strPort].Count));
+                            Array.Resize(ref strStatic, Convert.ToInt32(dicSclass[strPort].Count));
 
                             //跑迴圈來讀同IP同Port但不同感測器的值
-                            for (int i = 0; i < dicDeviceList[strPort].Count; i++)
+                            for (int i = 0; i < dicSclass[strPort].Count; i++)
                             {
                                 try
                                 {
@@ -331,146 +327,136 @@ namespace MES_N
                                     intSencorPort = 0;
                                     intIndex = i;
                                     listIndex.Add(i);
-                                    strTID = MPU.dt_MainTable.Rows[int_ThreadNum + intIndex]["TID"].ToString();
-                                    strSID = MPU.dt_MainTable.Rows[int_ThreadNum + intIndex]["SID"].ToString();
-                                    strNote = MPU.dt_MainTable.Rows[int_ThreadNum + intIndex]["NOTE"].ToString();
+                                    strTID = MPU.dtMainTable.Rows[int_ThreadNum + intIndex]["TID"].ToString();
+                                    strSID = MPU.dtMainTable.Rows[int_ThreadNum + intIndex]["SID"].ToString();
+                                    strNote = MPU.dtMainTable.Rows[int_ThreadNum + intIndex]["NOTE"].ToString();
+                                    if (dicSclass[strPort][i].Split(';')[0].Split('_').Length == 2)
+                                        intSencorPort = Convert.ToInt32(dicSclass[strPort][i].Split(';')[0].Split('_')[1]);
+                                    string sclass = dicSclass[strPort][intIndex].Split(';')[0].Split('_')[0];
 
-                                    //根據不同的設備來執行不同的判斷連線方式
-                                    switch (dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[0])
+                                    if (CheckSocket(sclass))
                                     {
-                                        #region 無法用Socket.Poll判斷連線
-                                        case "3": //控制燈號模組
-                                            if (clientSocket != null && clientSocket.Connected == true)
-                                                function_WLS_LCS();
-                                            break;
-                                        #endregion
+                                        //根據不同的設備來執行不同的判斷連線方式
+                                        switch (sclass)
+                                        {
+                                            case "0"://寫假資料讓燈號亮黃燈
+                                                function_0();
+                                                break;
+                                            case "1": //環境溫濕度
+                                                function_01();
+                                                break;
+                                            case "2": //條碼
+                                                function_02();
+                                                break;
+                                            case "3": //控制燈號模組
+                                                function_03();
+                                                break;
+                                            case "4":
+                                                function_DTS();
+                                                break;
+                                            case "5":
+                                                function_05();
+                                                break;
+                                            case "6":
+                                                function_06();
+                                                break;
+                                            case "7": //221209
+                                                function_07();
+                                                break;
+                                            case "8":
+                                                function_DTS_8();
+                                                break;
+                                            case "9": //正壓
 
-                                        #region 不須判斷連線
-                                        case "0"://寫假資料讓燈號亮黃燈
-                                            function_0();
-                                            break;
-                                        case "26": //只PING設備IP，連線成功就回傳黃燈
-                                            function_26_PingIP();
-                                            break;
-                                        case "31": //廠務設備 比電阻
-                                            function_RESOHM();
-                                            break;
-                                        #endregion
-                                        default:
-                                            #region 可以用Socket.Poll判斷連線
-                                            if (CheckSocket(clientSocket))
-                                            {
-                                                switch (dicDeviceList[strPort][i].Split(';')[0].Split('_')[0])
-                                                {
-                                                    case "1": //環境溫濕度
-                                                        function_01();
-                                                        break;
-                                                    case "2": //條碼
-                                                        function_02();
-                                                        break;
-                                                    case "4":
-                                                        function_DTS();
-                                                        break;
-                                                    case "5":
-                                                        function_KPS();
-                                                        break;
-                                                    case "6":
-                                                        function_06();
-                                                        break;
-                                                    case "7":
-                                                        function_07();
-                                                        break;
-                                                    case "8":
-                                                        function_DTS_8();
-                                                        break;
-                                                    case "9": //正壓
-                                                        function_09_positive();
-                                                        break;
-                                                    case "10": //負壓
-                                                        function_10_negative();
-                                                        break;
-                                                    case "11": //流量計
-                                                        if (dicDeviceList[strPort][i].Split(';')[0].Split('_').Length == 2)
-                                                            intSencorPort = Convert.ToInt32(dicDeviceList[strPort][i].Split(';')[0].Split('_')[1]);
-                                                        function_11_flow(intSencorPort);
-                                                        break;
-                                                    case "12": //燈號判斷
-                                                        function_12_light();
-                                                        break;
-                                                    case "13": //溫度
-                                                        function_13();
-                                                        break;
-                                                    case "14": //燈號控制
-                                                        function_14();
-                                                        break;
-                                                    case "15": //正壓、負壓(8_1、8_2、8_5、8_6)
-                                                        if (dicDeviceList[strPort][i].Split(';')[0].Split('_').Length == 2)
-                                                            intSencorPort = Convert.ToInt32(dicDeviceList[strPort][i].Split(';')[0].Split('_')[1]);
-                                                        function_15(intSencorPort);
-                                                        break;
-                                                    case "16": //PC S1F1 燈號
-                                                        function_16_S1F1_light();
-                                                        break;
-                                                    case "17": //PC S1F2 壓力
-                                                        function_17_S1F2_pressure();
-                                                        break;
-                                                    case "18": //PC S1F3 流量
-                                                        function_18_S1F3_flow();
-                                                        break;
-                                                    case "19": //PC S1F4 溫度
-                                                        function_19_S1F4_temperature();
-                                                        break;
-                                                    case "20": //PC S1F5 吸嘴阻值
-                                                        function_20_S1F5_resistance();
-                                                        break;
-                                                    case "21": //PC S1F6 H-Judge讀值
-                                                        function_21_S1F6_H_Judge();
-                                                        break;
-                                                    case "22": //PC S1F7 螢幕辨識參數(Temperature, Power, force, Time)
-                                                        function_22_S1F7_shoucut();
-                                                        break;
-                                                    case "23": //BrainChild溫度
-                                                        function_23_brainchild();
-                                                        break;
-                                                    case "24": //PC S1F8 舉離機(NMPA, NMPB)
-                                                        function_24_S1F8();
-                                                        break;
-                                                    case "25": //新氣壓頭讀取
-                                                        if (dicDeviceList[strPort][i].Split(';')[0].Split('_').Length == 2)
-                                                            intSencorPort = Convert.ToInt32(dicDeviceList[strPort][i].Split(';')[0].Split('_')[1]);
-                                                        function_25(intSencorPort);
-                                                        break;
-                                                    case "27": //晶圓清洗機#1 燈號判斷
-                                                        function_27_light();
-                                                        break;
-                                                    case "28": //電漿蝕刻機#2 燈號判斷
-                                                        function_28_light();
-                                                        break;
-                                                    case "29": //Cello RIE反應式離子蝕刻機-1 燈號判斷
-                                                        function_29_light();
-                                                        break;
-                                                    case "30": //廠務設備 氮氣流量
-                                                        function_AFR();
-                                                        break;
-                                                    case "32": //廠務設備 水流量
-                                                        function_LFM();
-                                                        break;
-                                                    case "33": //調頻機燈號判斷
-                                                        function_33();
-                                                        break;
-                                                    case "34": //清洗機水阻值
-                                                        function_34();
-                                                        break;
-                                                    default:
-                                                        //SetStatus();
-                                                        break;
-                                                }
-                                            }
-                                            #endregion
-                                            break;
+                                                break;
+                                            case "10": //負壓
+
+                                                break;
+                                            case "11": //流量計
+                                                function_11(intSencorPort);
+                                                break;
+                                            case "12": //燈號判斷
+                                                function_12();
+                                                break;
+                                            case "13": //溫度
+                                                function_13();
+                                                break;
+                                            case "14": //燈號控制
+                                                function_14();
+                                                break;
+                                            case "15": //正壓、負壓(8_1、8_2、8_5、8_6)
+                                                function_15(intSencorPort);
+                                                break;
+                                            case "16": //PC S1F1 燈號
+                                                function_16();
+                                                break;
+                                            case "17": //PC S1F2 壓力
+                                                function_17();
+                                                break;
+                                            case "18": //PC S1F3 流量
+                                                function_18();
+                                                break;
+                                            case "19": //PC S1F4 溫度
+                                                function_19();
+                                                break;
+                                            case "20": //PC S1F5 吸嘴阻值
+                                                function_20();
+                                                break;
+                                            case "21": //PC S1F6 H-Judge讀值
+                                                function_21();
+                                                break;
+                                            case "22": //PC S1F7 螢幕辨識參數(Temperature, Power, force, Time)
+                                                function_22();
+                                                break;
+                                            case "23": //BrainChild溫度
+                                                function_23();
+                                                break;
+                                            case "24": //PC S1F8 舉離機(NMPA, NMPB)
+                                                function_24();
+                                                break;
+                                            case "25": //新氣壓頭讀取
+                                                function_25(intSencorPort);
+                                                break;
+                                            case "27": //晶圓清洗機#1 燈號判斷
+                                                function_27();
+                                                break;
+                                            case "28": //電漿蝕刻機#2 燈號判斷
+                                                function_28();
+                                                break;
+                                            case "29": //Cello RIE反應式離子蝕刻機-1 燈號判斷
+                                                function_29();
+                                                break;
+                                            case "30": //廠務設備 氮氣流量
+                                                function_30();
+                                                break;
+                                            case "32": //廠務設備 水流量
+                                                function_32();
+                                                break;
+                                            case "33": //調頻機燈號判斷
+                                                function_33();
+                                                break;
+                                            case "34": //清洗機水阻值
+                                                function_34();
+                                                break;
+                                            case "26": //只PING設備IP，連線成功就回傳黃燈
+                                                function_26();
+                                                break;
+                                            case "31": //廠務設備 比電阻
+                                                function_31();
+                                                break;
+                                            default:
+                                                break;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (boolMESnetISrun == false)
+                                        {
+                                            SocketClientConnect();
+                                        }
                                     }
 
-                                    #region 原方法註解
+                                    #region (註解)原方法
                                     //連結成功才動作
                                     //if (clientSocket != null && !clientSocket.Poll(1, SelectMode.SelectRead) && clientSocket.Connected == true)
                                     //{
@@ -618,7 +604,7 @@ namespace MES_N
                                     }
                                 }
 
-                                #region 更新connectlog資料表
+                                #region (註解)更新connectlog資料表
                                 if (bool_AutoRun)
                                 {
                                     //DataTable dt = new DataTable();
@@ -691,23 +677,23 @@ namespace MES_N
                                 }
                                 #endregion
 
-                                // 刷新設備狀態
-                                //SetStatus();
-
                                 //舊版本MES的SQL語法會偶發性產生只有一個分號的SQL語法，尚未修正
                                 //因此先判斷遇到只有分號時將SQL語法清除
                                 if (strCmdSQL == ";")
                                     strCmdSQL = "";
 
-                                //將SQL語法合併到sbSQL中
-                                //sbSQL.AppendLine(strCmdSQL);
-                                //sbSQL.AppendLine();
+                                //若strCmdSQL不是空字串，就存入listSQL
                                 if (!string.IsNullOrWhiteSpace(strCmdSQL))
+                                {
                                     MPU.listSQL.Add(strCmdSQL);
+                                    strCmdSQL = "";
+                                }
+                                //更新設備狀態
+                                SetStatus(intIndex);
                             }
 
                             //20221207改為由Form的Timer統一寫入資料庫
-                            #region  判斷目前感測器連線狀態，連線正常就回寫資料庫
+                            #region  (註解)判斷目前感測器連線狀態，連線正常就回寫資料庫
                             //if (false)
                             //{
                             //    switch (dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[0])
@@ -771,55 +757,46 @@ namespace MES_N
 
                             boolMESnetISrun = false;
                         }
-
-                        //每50秒收集一次設備數據，並回寫資料庫
-                        NextRumTime = DateTime.Now.AddSeconds(50);
                     }
 
-                    #region  每30秒判斷目前感測器連線狀態，連線失敗就等待重新連線
-                    if (DateTime.Now >= ReconnectWaitTime)
-                    {
-                        int_ReconnectWait = 0;
-                        ReconnectWaitTime = DateTime.Now.AddSeconds(30);
-                        switch (dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[0])
-                        {
-                            case "3": //控制燈號模組
-                                #region 無法用Socket.Poll判斷連線
-                                if (clientSocket == null || clientSocket.Connected == false)
-                                {
-                                    SocketClientConnect();
-                                }
-                                #endregion
-                                break;
-                            case "0"://寫假資料讓燈號亮黃燈
-                            case "26": //只PING設備IP，連線成功就回傳黃燈
-                            case "31": //廠務設備 比電阻
-                                #region 無須建立連線
-                                #endregion
-                                break;
-                            default:
-                                #region 可以用Socket.Poll判斷連線
-                                if (!CheckSocket(clientSocket))
-                                {
-                                    SocketClientConnect();
-                                }
-                                #endregion
-                                break;
-                        }
-                    }
+                    #region  (註解)每30秒判斷目前感測器連線狀態，連線失敗就等待重新連線
+                    //if (DateTime.Now >= CheckConnectTime)
+                    //{
+                    //    int_ReconnectWait = 0;
+                    //    CheckConnectTime = DateTime.Now.AddSeconds(30);
+                    //    switch (dicSclass[strPort][intIndex].Split(';')[0].Split('_')[0])
+                    //    {
+                    //        #region 無法用Socket.Poll判斷連線
+                    //        case "3": //控制燈號模組
+                    //            if (clientSocket == null || clientSocket.Connected == false)
+                    //            {
+                    //                SocketClientConnect();
+                    //            }
+                    //            break;
+                    //        #endregion
+
+                    //        #region 無須建立連線
+                    //        case "0"://寫假資料讓燈號亮黃燈
+                    //        case "26": //只PING設備IP，連線成功就回傳黃燈
+                    //        case "31": //廠務設備 比電阻
+                    //            break;
+                    //        #endregion
+
+                    //        #region 可以用Socket.Poll判斷連線
+                    //        default:
+                    //            if (clientSocket == null || clientSocket.Poll(1, SelectMode.SelectRead) || clientSocket.Connected == false)
+                    //            {
+                    //                SocketClientConnect();
+                    //            }
+                    //            break;
+                    //        #endregion
+                    //    }
+                    //}
+                    //else
+                    //    int_ReconnectWait++;
                     #endregion
 
-                    //執行緒每10次循環就更新一次設備狀態
-                    if (intCount >= 10)
-                    {
-                        int_ReconnectWait++;
-                        listIndex.ForEach(t => SetStatus(t));
-                        intCount = 0;
-                    }
-                    else
-                        intCount++;
-
-                    Thread.Sleep(100);
+                    Thread.Sleep(1000);
                 }
                 catch (Exception ex)
                 {
@@ -831,32 +808,69 @@ namespace MES_N
                 }
             } 
         }
+        #endregion
 
-        #region 檢查Socket連線狀態
+        #region (註解)檢查Socket連線狀態
         /// <summary>
         /// 檢查Socket連線狀態
         /// </summary>
         /// <param name="skt"></param>
         /// <returns>回傳true代表連線成功，false代表連線斷開</returns>
-        bool CheckSocket(Socket skt)
+        //bool CheckSocket(Socket skt)
+        //{
+        //    if (skt == null)
+        //        return false;
+        //    bool part1 = skt.Poll(1000, SelectMode.SelectRead);
+        //    bool part2 = (skt.Available == 0);
+        //    if (part1 && part2)
+        //        return false;
+        //    else
+        //    {
+        //        try
+        //        {
+        //            int sentBytesCount = skt.Send(new byte[1], 1, 0);
+        //            return sentBytesCount == 1;
+        //        }
+        //        catch
+        //        {
+        //            return false;
+        //        }
+        //    }
+        //}
+        #endregion
+
+        #region 檢查Socket連線狀態
+        /// <summary>
+        /// 檢查Socket連線狀態
+        /// </summary>
+        /// <param name="sclass"></param>
+        /// <returns>回傳true代表連線成功，false代表連線斷開</returns>
+        bool CheckSocket(string sclass)
         {
-            if (skt == null)
-                return false;
-            bool part1 = skt.Poll(1000, SelectMode.SelectRead);
-            bool part2 = (skt.Available == 0);
-            if (part1 && part2)
-                return false;
-            else
+            switch (sclass)
             {
-                try
-                {
-                    int sentBytesCount = skt.Send(new byte[1], 1, 0);
-                    return sentBytesCount == 1;
-                }
-                catch
-                {
-                    return false;
-                }
+                #region 無法用Socket.Poll判斷連線
+                case "3": //控制燈號模組
+                    if (clientSocket != null && clientSocket.Connected == true)
+                        return true;
+                    else
+                        return false;
+                #endregion
+
+                #region 無須建立連線
+                case "0"://寫假資料讓燈號亮黃燈
+                case "26": //只PING設備IP，連線成功就回傳黃燈
+                case "31": //廠務設備 比電阻
+                    return true;
+                #endregion
+
+                #region 可以用Socket.Poll判斷連線
+                default:
+                    if (clientSocket != null && !clientSocket.Poll(1, SelectMode.SelectRead) && clientSocket.Connected == true)
+                        return true;
+                    else
+                        return false;
+                #endregion
             }
         }
         #endregion
@@ -866,6 +880,7 @@ namespace MES_N
         {
             try
             {
+                string sclass = dicSclass[strPort][index].Split(';')[0].Split('_')[0];
                 //strStatic為null代表感測器還沒建立連線，因此將strStatic改為連線中
                 if (strStatic[index] == null)
                     strStatic[index] = MPU.str_ErrorMessage[3];
@@ -895,38 +910,25 @@ namespace MES_N
                 }
                 else 
                 {
-                    //判斷感測器斷線，但strStatic還沒更新時的狀況
-                    switch (dicDeviceList[strPort][index].Split(';')[0].Split('_')[0])
+                    if (!CheckSocket(sclass))
                     {
-                        case "0":
-                            break;
-                        case "3": //控制燈號模組
-                            if (clientSocket == null || clientSocket.Connected == false)
-                            {
-                                if (int_ReconnectWait >= 20)
-                                    strStatic[index] = MPU.str_ErrorMessage[6];
-                                else
-                                    strStatic[index] = $"{MPU.str_ErrorMessage[1]}({int_ReconnectWait})";
-                            }
-                            break;
-                        case "26": //只PING設備IP，連線成功就回傳黃燈
-                        case "31": //廠務設備 比電阻                            
-                            break;
-                        default:
-                            if (clientSocket == null || clientSocket.Poll(1, SelectMode.SelectRead) || clientSocket.Connected == false)
-                            {
-                                if (int_ReconnectWait >= 20)
-                                    strStatic[index] = MPU.str_ErrorMessage[6];
-                                else
-                                    strStatic[index] = $"{MPU.str_ErrorMessage[1]}({int_ReconnectWait})";
-                            }
-                            break;
+                        //判斷感測器斷線，但strStatic還沒更新時的狀況
+                        if (int_ReconnectWait >= 20)
+                        {
+                            strStatic[index] = MPU.str_ErrorMessage[1];
+                            int_ReconnectWait = 0;
+                        }
+                        else
+                        {
+                            strStatic[index] = $"{MPU.str_ErrorMessage[6]}";
+                            int_ReconnectWait++;
+                        }
                     }
                 }
 
                 //只要strStatic不是null，就把strStatic內容存入字典中，再由Form的Timer去更新DataTable狀態
                 if (strStatic[index] != null)
-                    MPU.dic_ReceiveMessage.AddOrUpdate(int_ThreadNum + index, strStatic[index], (k, v) => strStatic[index]);
+                    MPU.dicDgvValue.AddOrUpdate(int_ThreadNum + index, strStatic[index], (k, v) => strStatic[index]);
             }
             catch (Exception ex)
             {
@@ -935,115 +937,6 @@ namespace MES_N
             }
         }
         #endregion
-
-        #region SQL
-
-        #region 讀取SQL-MES暫存資料庫(dbMES_temp)
-        /// <summary>
-        /// 讀取SQL(請確認SQL指令是否正確)
-        /// </summary>
-        /// <param name="pSQL">SQL指令</param>
-        public void ReadSQL_dbMEStemp(string pSQL)
-        {
-            try
-            {
-                using (SqlConnection conn = new SqlConnection(MPU.conStr_dbMEStemp))
-                {
-                    conn.Open();
-                    SqlCommand cmd = new SqlCommand(pSQL, conn);
-                    cmd.CommandTimeout = 3;
-                    cmd.ExecuteNonQuery();
-                    cmd.Cancel();
-                    conn.Close();
-                }
-            }
-            catch (Exception ex)
-            {
-                //throw ex;
-            }
-        }
-        #endregion        
-
-        #region 讀取SQL
-        /// <summary>
-        /// 讀取SQL(請確認SQL指令是否正確)
-        /// </summary>
-        /// <param name="pSQL">SQL指令</param>
-        public void ReadSQL(string pSQL)
-        {
-            try
-            {
-                using (SqlConnection conn = new SqlConnection(MPU.conStr))
-                {
-                    conn.Open();
-                    SqlCommand cmd = new SqlCommand(pSQL, conn);
-                    cmd.CommandTimeout = 5;
-                    cmd.ExecuteNonQuery();
-                    cmd.Cancel();
-                    conn.Close();
-                }
-            }
-            catch (Exception ex)
-            {
-                Thread.Sleep(1000);
-                ReReadSQL(pSQL);
-                //throw ex;
-            }
-        }
-
-        public void ReReadSQL(string pSQL)
-        {
-            try
-            {
-                using (SqlConnection conn = new SqlConnection(MPU.conStr))
-                {
-                    conn.Open();
-                    SqlCommand cmd = new SqlCommand(pSQL, conn);
-                    cmd.CommandTimeout = 5;
-                    cmd.ExecuteNonQuery();
-                    cmd.Cancel();
-                    conn.Close();
-                }
-            }
-            catch (Exception ex)
-            {
-                //若dbMES資料庫寫入異常時，改為寫入dbMEStemp臨時資料庫
-                if (!pSQL.Contains("tb_connectlog"))
-                    ReadSQL_dbMEStemp(pSQL);
-                throw ex;
-            }
-        }
-        #endregion        
-
-        #region 讀取SQL回傳DataTable
-        /// <summary>
-        /// 讀取SQL回傳DataTable(請確認SQL指令是否正確)
-        /// </summary>
-        /// <param name="pSQL">SQL指令</param>
-        private  DataTable ReadSQLToDT(string pSQL, int timeout = 3)
-        {
-            DataTable dtSource = new DataTable();
-            try
-            {
-                using (SqlConnection conn = new SqlConnection(MPU.conStr))
-                {
-                    conn.Open();
-                    SqlCommand cmd = new SqlCommand(pSQL, conn);
-                    cmd.CommandTimeout = timeout;
-                    SqlDataAdapter adapter = new SqlDataAdapter(cmd);
-                    adapter.Fill(dtSource);
-                    cmd.Cancel();
-                    conn.Close();
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine( ex.Message);
-            }
-            return dtSource;
-        }
-        #endregion
-        #endregion  
 
         #region 計算CRC檢查碼
         /// <summary>
@@ -1103,25 +996,7 @@ namespace MES_N
                 System.Windows.Forms.Application.DoEvents();
             }
         }
-        #endregion
-
-        #region 發送Socket指令
-        /// <summary>
-        /// 發送Socket指令
-        /// </summary>
-        /// <param name="cmd">字串格式指令</param>
-        private void Send(string cmd)
-        {
-            //字串指令轉Byte陣列，尚須調整
-            for (int j = 0; j < 8; j++)
-            {
-                byteCmdSend[j] = Convert.ToByte(Convert.ToInt32(cmd.Split(' ')[j], 16));
-            }
-
-            //送出Byte陣列指令
-            clientSocket.Send(byteCmdSend, 0, 8, System.Net.Sockets.SocketFlags.None);
-        }
-        #endregion
+        #endregion        
 
         #region 計算完整Modbus指令
         /// <summary>
@@ -1135,6 +1010,88 @@ namespace MES_N
         }
         #endregion
 
+        #region 舊模組(無使用)
+        //正壓
+        void function_09_positive()
+        {
+            try
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    //if氣壓ad位置為1
+                    {
+                        byteCmdSend[i] = Convert.ToByte(Convert.ToInt32(strCmdEight_1.Split(' ')[i], 16));
+                    }
+
+                    #region if設備為IPA
+
+                    //正壓ad位置為5
+                    byteCmdSend[i] = Convert.ToByte(Convert.ToInt32(strCmdEight_5.Split(' ')[i], 16));
+                    //正壓ad位置為6
+                    byteCmdSend[i] = Convert.ToByte(Convert.ToInt32(strCmdEight_6.Split(' ')[i], 16));
+
+                    #endregion
+                }
+                clientSocket.Send(byteCmdSend, 0, 8, System.Net.Sockets.SocketFlags.None);
+
+                Sleep(50, 10);
+
+                int int_Net_Available = clientSocket.Available;
+
+                clientSocket.Receive(byteCmdReceive, 0, int_Net_Available, SocketFlags.None);
+
+                String str_hex = "";
+                double double_Mpa = 0;
+
+                str_hex = Convert.ToString(byteCmdReceive[4], 16).PadLeft(2, '0') + Convert.ToString(byteCmdReceive[5], 16).PadLeft(2, '0');
+
+                int[] eight = new int[str_hex.Length];
+                for (int i = 0; i < eight.Length; i = i + 4)
+                {
+                    eight[i / 4] = Convert.ToInt32(str_hex.Substring(i, 4), 16);
+                    //感測值結果
+                    double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) / 16;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        //負壓
+        void function_10_negative()
+        {
+            try
+            {
+                byteCmdSend = strCmdEight_2.Split(' ').Select(t => Convert.ToByte(t, 16)).ToArray();
+
+                clientSocket.Send(byteCmdSend, 0, 8, System.Net.Sockets.SocketFlags.None);
+
+                Sleep(50, 10);
+
+                int int_Net_Available = clientSocket.Available;
+
+                clientSocket.Receive(byteCmdReceive, 0, int_Net_Available, SocketFlags.None);
+
+                String str_hex = "";
+                double double_Mpa = 0;
+
+                str_hex = Convert.ToString(byteCmdReceive[4], 16).PadLeft(2, '0') + Convert.ToString(byteCmdReceive[5], 16).PadLeft(2, '0');
+
+                int[] eight = new int[str_hex.Length];
+                for (int i = 0; i < eight.Length; i = i + 4)
+                {
+                    eight[i / 4] = Convert.ToInt32(str_hex.Substring(i, 4), 16);
+                    //感測值結果
+                    double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) * 101 / (-16);
+                }
+            }
+            catch
+            {
+            }
+        }
+        #endregion
+
         #region function_0 強制亮燈、給數據
         void function_0()
         {
@@ -1143,7 +1100,7 @@ namespace MES_N
             {
                 Random rdm = new Random();
                 string value;
-                switch (dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[1])
+                switch (dicSclass[strPort][intIndex].Split(';')[0].Split('_')[1])
                 {
                     case "1": //環境溫濕度
 
@@ -1214,9 +1171,9 @@ namespace MES_N
 
                         break;
                     case "15": //正壓、負壓(8_1、8_2、8_5、8_6)
-                        if (Convert.ToInt32(dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[2]) == 1 ||
-                            Convert.ToInt32(dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[2]) == 5 ||
-                            Convert.ToInt32(dicDeviceList[strPort][intIndex].Split(';')[0].Split('_')[2]) == 6)
+                        if (Convert.ToInt32(dicSclass[strPort][intIndex].Split(';')[0].Split('_')[2]) == 1 ||
+                            Convert.ToInt32(dicSclass[strPort][intIndex].Split(';')[0].Split('_')[2]) == 5 ||
+                            Convert.ToInt32(dicSclass[strPort][intIndex].Split(';')[0].Split('_')[2]) == 6)
                         {
                             value = Math.Round(Convert.ToDouble(rdm.Next(30, 60) / 100), 2).ToString();
                             strStatic[intIndex] = $"正壓({value})";
@@ -1341,6 +1298,7 @@ namespace MES_N
         {
             try
             {
+                //221209先RECEIVE清空
                 byteCmdSend = strCmdEHCEHD.Split(' ').Select(t => Convert.ToByte(t, 16)).ToArray();
 
                 clientSocket.Send(byteCmdSend, 0, strCmdEHCEHD.Split(' ').Length, System.Net.Sockets.SocketFlags.None);
@@ -1363,6 +1321,7 @@ namespace MES_N
                     //濕度
                     string str_H = Convert.ToInt32(String.Format("{0:X2}", byteCmdReceive[11]) + String.Format("{0:X2}", byteCmdReceive[12]), 16).ToString().PadLeft(4, '0'); ;
 
+                    //221209
                     if (strTID == "1001-001")
                     {
 
@@ -1404,7 +1363,8 @@ namespace MES_N
         #endregion
 
         #region 舊版本MES function 02-10 
-        //2條碼 
+
+        #region 02 條碼 
         void function_02()
         {
 
@@ -1527,6 +1487,7 @@ namespace MES_N
             }
 
         }
+        #endregion
 
         Boolean booleanInsert = true;
 
@@ -1578,8 +1539,8 @@ namespace MES_N
         }
 
 
-        //3燈號函數 
-        void function_WLS_LCS()
+        #region 03 燈號函數 
+        void function_03()
         {
             try
             {
@@ -1711,6 +1672,9 @@ namespace MES_N
                         }
                         else if (str_T.Length > 8 && strSID.Substring(0, 3) == "LCS")
                         {
+                            //221209 燈號意思
+
+
                             //LCS 00RWYG00 RGYW
                             //LCS 如果有0001 純白燈的話 => 回傳黃燈 0011
                             //LCS 如果有0000 全滅的話 => 回傳黃燈 0010
@@ -1958,6 +1922,7 @@ namespace MES_N
             }
 
         }
+        #endregion
 
         public static byte[] crc16(byte[] data, byte dataSize)
         {
@@ -1989,7 +1954,8 @@ namespace MES_N
 
         int int_DTS_temp_count = 0;
 
-        //4溫度 
+        #region 04 溫度 
+        //221209 進度0
         void function_DTS()
         {
 
@@ -2193,13 +2159,15 @@ namespace MES_N
 
 
         }
+        #endregion
 
         string[] str_KPS_temp = new string[8];
 
-        //5空壓
+        #region 05 空壓KPS
+        //221209 補對數值
         //DC 解碼 01 03 00 00 00 08 44 0C
         //2.24V~2.25V = 0.352 2.23~2.22 = 0.351 
-        void function_KPS()
+        void function_05()
         {
             try
 
@@ -2439,8 +2407,11 @@ namespace MES_N
             }
 
         }
+        #endregion
 
-        //6水阻值 採用 ma解碼
+        #region 06 水阻值(舊) 
+        //221209 補對數值
+        //採用 ma解碼
         //DC 解碼 01 03 00 00 00 08 44 0C
         //2.24V~2.25V = 0.352 2.23~2.22 = 0.351 
         void function_06()
@@ -2574,19 +2545,21 @@ namespace MES_N
             }
 
         }
+        #endregion
 
-        //7 暫時套用 
+        #region 07 NULL 
         void function_07()
         {
 
         }
+        #endregion
 
         byte[] Byte_Command_Sent_DTS8 = new byte[100];
 
         //記錄是否有填入values了
         Boolean bool_add_Values = false;
 
-        //8 溫度4通道模組解碼
+        #region 08 溫度4通道
         void function_DTS_8()
         {
             Sleep(50, 10);
@@ -2895,93 +2868,16 @@ namespace MES_N
                 }
             }
         }
+        #endregion
 
-        //正壓
-        void function_09_positive()
-        {
-            try
-            {
-                for (int i = 0; i < 8; i++)
-                {
-                    //if氣壓ad位置為1
-                    {
-                        byteCmdSend[i] = Convert.ToByte(Convert.ToInt32(strCmdEight_1.Split(' ')[i], 16));
-                    }
-
-                    #region if設備為IPA
-                    
-                        //正壓ad位置為5
-                        byteCmdSend[i] = Convert.ToByte(Convert.ToInt32(strCmdEight_5.Split(' ')[i], 16));
-                        //正壓ad位置為6
-                        byteCmdSend[i] = Convert.ToByte(Convert.ToInt32(strCmdEight_6.Split(' ')[i], 16));
-                    
-                    #endregion
-                }
-                clientSocket.Send(byteCmdSend, 0, 8, System.Net.Sockets.SocketFlags.None);
-
-                Sleep(50, 10);
-
-                int int_Net_Available = clientSocket.Available;
-
-                clientSocket.Receive(byteCmdReceive, 0, int_Net_Available, SocketFlags.None);
-
-                String str_hex = "";
-                double double_Mpa = 0;
-
-                str_hex = Convert.ToString(byteCmdReceive[4], 16).PadLeft(2, '0') + Convert.ToString(byteCmdReceive[5], 16).PadLeft(2, '0');
-
-                int[] eight = new int[str_hex.Length];
-                for (int i = 0; i < eight.Length; i = i + 4)
-                {
-                    eight[i / 4] = Convert.ToInt32(str_hex.Substring(i, 4), 16);
-                    //感測值結果
-                    double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) / 16;
-                }
-            }
-            catch
-            {
-            }
-        }
-
-        //負壓
-        void function_10_negative()
-        {
-            try
-            {
-                byteCmdSend = strCmdEight_2.Split(' ').Select(t => Convert.ToByte(t, 16)).ToArray();
-
-                clientSocket.Send(byteCmdSend, 0, 8, System.Net.Sockets.SocketFlags.None);
-
-                Sleep(50, 10);
-
-                int int_Net_Available = clientSocket.Available;
-
-                clientSocket.Receive(byteCmdReceive, 0, int_Net_Available, SocketFlags.None);
-
-                String str_hex = "";
-                double double_Mpa = 0;
-
-                str_hex = Convert.ToString(byteCmdReceive[4], 16).PadLeft(2, '0') + Convert.ToString(byteCmdReceive[5], 16).PadLeft(2, '0');
-
-                int[] eight = new int[str_hex.Length];
-                for (int i = 0; i < eight.Length; i = i + 4)
-                {
-                    eight[i / 4] = Convert.ToInt32(str_hex.Substring(i, 4), 16);
-                    //感測值結果
-                    double_Mpa = ((Convert.ToDouble(eight[0])) * 20 / 4095 - 4) * 101 / (-16);
-                }
-            }
-            catch
-            {
-            }
-        }
+        
         #endregion
 
         #region 新版本MES function 11-29, 33
 
-        #region function_11_flow 流量計(8_3、8_4)
+        #region 11 流量計(可指定讀取通道)
         //流量計
-        void function_11_flow(int port)
+        void function_11(int port)
         {
             try
             {
@@ -3017,6 +2913,7 @@ namespace MES_N
                     double double_Mpa = 0;
                     str_hex = Convert.ToString(byteCmdReceive[4], 16).PadLeft(2, '0') + Convert.ToString(byteCmdReceive[5], 16).PadLeft(2, '0');
 
+                    //221209 變數名稱
                     //感測值結果
                     double_Mpa = (((Convert.ToDouble(Convert.ToInt32(str_hex, 16)) * 20 / 4095 - 4) / 0.16) * 50) / 100;
 
@@ -3046,9 +2943,9 @@ namespace MES_N
         }
         #endregion
 
-        #region function_12_light 燈號判斷
+        #region 12 燈號(新)
         //燈號
-        void function_12_light()
+        void function_12()
         {
             try
             {
@@ -3146,7 +3043,7 @@ namespace MES_N
         }
         #endregion
 
-        #region function_13 溫度
+        #region 13 溫度
         void function_13()
         {
             try
@@ -3229,287 +3126,26 @@ namespace MES_N
         }
         #endregion
 
-        #region function_14 燈號控制
+        #region 14 NULL
         void function_14()
         {
             try
             {
-                //17122601
-                if (MPU.str_Barcode != "")
-                {
-                    byte[] byte_Command_wlslcs = new byte[5];
-
-                    if (MPU.str_Barcode == "00000000")
-                    {
-                        //傳送橘燈訊號
-                        SetOrangeLight();
-                        //byte_Command_wlslcs[0] = Convert.ToByte("32", 16);
-                        //NetworkStream_Reader.Write(byte_Command_wlslcs, 0, 1);
-                        //byte_Command_wlslcs[0] = Convert.ToByte("30", 16);
-                        //byte_Command_wlslcs[1] = Convert.ToByte("38", 16);
-                        //byte_Command_wlslcs[2] = Convert.ToByte("31", 16);
-                        //byte_Command_wlslcs[3] = Convert.ToByte("0D", 16);
-                        //byte_Command_wlslcs[4] = Convert.ToByte("0A", 16);
-                        clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
-                    }
-                    else
-                    {
-                        //16進位
-                        byte_Command_wlslcs[0] = Convert.ToByte("30", 16);
-                        byte_Command_wlslcs[1] = Convert.ToByte("38", 16);
-                        byte_Command_wlslcs[2] = Convert.ToByte("32", 16);
-                        byte_Command_wlslcs[3] = Convert.ToByte("0D", 16);
-                        byte_Command_wlslcs[4] = Convert.ToByte("0A", 16);
-                        clientSocket.Send(byte_Command_wlslcs, 0, 5, System.Net.Sockets.SocketFlags.None);
-                    }
-
-                    MPU.str_Barcode = "";
-                }
-
-                //不會一直回傳燈號，只會傳一次，只會在有變動產生回傳，這樣子會有潛藏性的BUG。
-                //所有在傳遞一定次數之後，必須重新連線一次。
-                //在燈號的運作中，如果n分鐘沒有資料回傳的話，就重來一次連結，產生目前狀態
-
-                int_WLSLCS_Count += 1;
-
-                if (int_WLSLCS_Count > 2500)
-                {
-                    int_WLSLCS_Count = 0;
-
-                    Str_WLSLCS_F = "";
-                }
-
-                //200227 當燈號計數器歸零時，送一個橘燈訊號, 必須是自製燈號的
-                //
-                if (int_WLSLCS_Count == 0 && strSID.Substring(0, 3) == "WLS")
-                {
-                    SetOrangeLight();
-                }
-
-                Sleep(50, 10);
-
-                //取得目前網路盒的訊號資料量大小
-                int int_Net_Available = clientSocket.Available;
-
-                //判斷是否有資料以及是否可以讀取。
-                if (int_Net_Available >= 10)
-                {
-                    byte_function_03_loop_index = 0;
-
-                    string str_T = "";
-
-                    clientSocket.Receive(byteCmdReceive, 0, 10, SocketFlags.None);
-
-                    for (int j = 0; j <= 10 - 2; j++)
-                    {
-                        str_T += Convert.ToChar(byteCmdReceive[j]);
-                    }
-
-                    //和之前的燈號一樣的話，就不用做處理了。
-                    if (Str_WLSLCS_F != str_T)
-                    {
-                        //記錄這一次的燈號
-                        Str_WLSLCS_F = str_T;
-
-                        //判斷是何種燈號解析，WLS為自訂義燈號，LCS為燈號解析模組。
-                        //WLS 00BGYR00 RGYW
-                        if (str_T.Length > 8 && strSID.Substring(0, 3) == "WLS")
-                        {
-                            //17122601 
-
-                            if (strSID == "WLS002") //水洗機的燈號模組其中一組訊號拿來做段數開關的偵測。
-                            {
-                                if (str_T.Substring(2, 1) == "1")
-                                {
-                                    strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','SWD001','4',GETDATE(),'" + strNote + "'); ";
-                                }
-                                else
-                                {
-                                    strCmdSQL = "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','SWD001','0',GETDATE(),'" + strNote + "'); ";
-                                }
-                            }
-
-                            //因為紅燈為反相，所以需要把紅燈的顯示相反過來。
-                            if (str_T.Substring(5, 1) == "1")
-                            {
-                                str_T = "0" + str_T.Substring(3, 1) + str_T.Substring(4, 1) + str_T.Substring(2, 1);
-                            }
-                            else
-                            {
-                                str_T = "1" + str_T.Substring(3, 1) + str_T.Substring(4, 1) + str_T.Substring(2, 1);
-                            }
-                        }
-                        else if (str_T.Length > 8 && strSID.Substring(0, 3) == "LCS")
-                        {
-                            //LCS 00RWYG00 RGYW
-                            //LCS 如果有0001 純白燈的話 => 回傳黃燈 0011
-                            //LCS 如果有0000 全滅的話 => 回傳黃燈 0010
-                            str_T = str_T.Substring(2, 1) + str_T.Substring(5, 1) + str_T.Substring(4, 1) + str_T.Substring(3, 1);
-                            //LCS001 LCS002 燈號不同，為特殊型。
-                            //當為1100時，判斷為綠燈(0100)，當為0011時，判斷為黃燈(0010)，其他狀況時為紅燈(1000)
-                            if (strSID == "LCS001" || strSID == "LCS002")
-                            {
-                                Str_lcs = str_T;
-                                str_T = "1000";
-                                if (Str_lcs == "1100")
-                                {
-                                    str_T = "0100";
-                                }
-                                else if (Str_lcs == "0011")
-                                {
-                                    str_T = "0010";
-                                }
-                            }
-                            else
-                            {
-                                Str_lcs = str_T;
-
-                                if (Str_lcs == "0001")
-                                {
-                                    str_T = "0011";
-                                }
-                                else if (Str_lcs == "0000")
-                                {
-                                    str_T = "0010";
-                                }
-                                if (Str_lcs == "1100" || Str_lcs == "1110" || Str_lcs == "1101" || Str_lcs == "1111")
-                                {
-                                    str_T = "0100";
-                                }
-                            }
-                        }
-
-                        //燈號結果處理完畢
-                        str_ttt = str_T;
-
-                        strStatic[intIndex] = int_Net_Available + "@" + str_T + ":" + strSclass;
-
-                        //有資料時再處理
-                        if (str_T != "" && strSID != "WLS002")
-                        {
-                            //依製二製三放置不同資料表。
-                            //20161230 insert會一直加下去，所以insert指令會變很大。稍微修改一下，變成只有一筆insert into
-                            //如果String_SQLcommand 不是空字串的話，直接加入values的值到字串尾巴即可。
-                            if (strCmdSQL == "")
-                            {
-                                if (strDline == "P2")
-                                {
-                                    strCmdSQL += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-                                }
-                                else if (strDline == "P3")
-                                {
-                                    strCmdSQL += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-                                }
-                            }
-                            else
-                            {
-                                strCmdSQL += ", ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-                            }
-                        }
-                        else if (strSID == "WLS002")
-                        {
-                            if (strDline == "P2")
-                            {
-                                strCmdSQL += "INSERT INTO [dbo].[tb_P2recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-
-                            }
-                            else if (strDline == "P3")
-                            {
-                                strCmdSQL += "INSERT INTO [dbo].[tb_P3recordslog] ([DID],[DIP],[SID],[DVALUE],[SYSTIME] ,[NOTE])     VALUES ('" + strTID + "','" + strDIP + "','" + strSID + "','" + str_T + "',GETDATE(),'" + strNote + "') ";
-                            }
-                        }
-                        else
-                        {
-                            strCmdSQL = "";
-                        }
-                    }
-                }
-                else
-                {
-                    //當沒有資料的時候，利用發送指令取得回傳值
-
-                    byte[] byte_Command_wlslcs = new byte[5];
-
-                    byte_Command_wlslcs[0] = 48;
-                    byte_Command_wlslcs[1] = 56;
-                    byte_Command_wlslcs[2] = 48;
-                    byte_Command_wlslcs[3] = 10;
-                    byte_Command_wlslcs[4] = 13;
-                    //byte_Command_wlslcs[0] = Convert.ToByte("", 16);
-                    //byte_Command_wlslcs[0] = Convert.ToByte("", 16);
-                    //byte_Command_wlslcs[0] = Convert.ToByte("", 16);
-                    //byte_Command_wlslcs[0] = Convert.ToByte("", 16);
-                    //byte_Command_wlslcs[0] = Convert.ToByte("", 16);
-
-                    clientSocket.Receive(byte_Command_wlslcs, 0, 5, SocketFlags.None);
-
-                    for (int i = 0; i < 50; i++)
-                    {
-                        System.Threading.Thread.Sleep(10);
-
-                        System.Windows.Forms.Application.DoEvents();
-                    }
-
-                    int int_Net_Availablexxx = clientSocket.Available;
-
-                    //如果真的都沒有值回傳的話，再準備進行資料重連的動作。
-                    if (int_Net_Availablexxx == 0)
-                    {
-                        byte_function_03_loop_index += 1;
-
-                        strStatic[intIndex] = "<468>" + int_Net_Available + "@" + str_ttt + "，未解碼次數(" + byte_function_03_loop_index + "):" + strSclass;
-
-                        //當燈號解析超出10次沒有資料的時候，重新連線一次。
-                        if (byte_function_03_loop_index > 50)
-                        {
-                            //161208 加入一個共有變數，同一時間只能一個tcpip連線
-                            if (MPU.TOSrun == false)
-                            {
-                                MPU.TOSrun = true;
-
-                                byte_function_03_loop_index = 0;
-
-                                str_ttt = "";
-
-                                //NetworkStream_Reader.Close();
-
-                                //TcpClient_Reader.Close();
-
-                                //NetworkStream_Reader = null;
-
-                                //TcpClient_Reader = null;
-
-                                for (int int_t = 0; int_t < 100; int_t++)
-                                {
-                                    System.Windows.Forms.Application.DoEvents();
-
-                                    System.Threading.Thread.Sleep(5);
-                                }
-
-                                //重新建立連結
-                                SocketClientConnect();
-
-                                MPU.TOSrun = false;
-                            }
-                        }
-                    }
-                }
+                
             }
             catch (Exception EX)
             {
                 if (EX.Source != null)
                 {
-                    strStatic[intIndex] = "[" + byte_function_03_loop_index + "]Ex:" + EX.Source + EX.Message;
+                    strStatic[intIndex] = "Ex:" + EX.Source + EX.Message;
 
-                    Console.WriteLine("M0516:燈號異常:" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss[{0}]"), EX.Source + EX.Message);
-
-                    byte_function_03_loop_index += 1;
+                    Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss[{0}]"), EX.Source + EX.Message);
                 }
             }
         }
         #endregion
 
-        #region function_15 正壓、負壓(8_1、8_2、8_5、8_6)
+        #region 15 氣壓(可指定讀取通道)
         void function_15(int port)
         {
             try
@@ -3593,8 +3229,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_16_S1F1_light S1F1 燈號
-        void function_16_S1F1_light()
+        #region 16 ITMC版燈號(S1F1)
+        void function_16()
         {
             try
             {
@@ -3660,8 +3296,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_17_S1F2_pressure S1F2 氣壓
-        void function_17_S1F2_pressure()
+        #region 17 ITMC版氣壓(S1F2)
+        void function_17()
         {
             try
             {
@@ -3715,8 +3351,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_18_S1F3_flow S1F3 流量
-        void function_18_S1F3_flow()
+        #region 18 ITMC版流量(S1F3)
+        void function_18()
         {
             try
             {
@@ -3771,8 +3407,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_19_S1F4_temperature S1F4 溫度
-        void function_19_S1F4_temperature()
+        #region 19 ITMC版溫度(S1F4)
+        void function_19()
         {
             try
             {
@@ -3824,8 +3460,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_20_S1F5_resistance S1F5 種晶吸嘴阻值
-        void function_20_S1F5_resistance()
+        #region 20 ITMC版種晶吸嘴阻值(S1F5)
+        void function_20()
         {
             try
             {
@@ -3879,8 +3515,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_21_S1F6_H_Judge S1F6 H-Judge讀值
-        void function_21_S1F6_H_Judge()
+        #region 21 ITMC版H-Judge讀值(S1F6)
+        void function_21()
         {
             try
             {
@@ -3934,8 +3570,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_22_S1F7_shoucut S1F7 螢幕辨識參數(Temperature, Power, force, Time)
-        void function_22_S1F7_shoucut()
+        #region 22 螢幕辨識參數(Temperature, Power, force, Time)(S1F7)
+        void function_22()
         {
             try
             {
@@ -3991,8 +3627,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_23_brainchild 溫度
-        void function_23_brainchild()
+        #region 23 BrainChild 溫度
+        void function_23()
         {
             try
             {
@@ -4043,8 +3679,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_24_S1F8 S1F8 舉離機(NMPA, NMPB)
-        void function_24_S1F8()
+        #region 24 舉離機(NMPA, NMPB)(S1F8)
+        void function_24()
         {
             try
             {
@@ -4098,7 +3734,7 @@ namespace MES_N
         }
         #endregion
 
-        #region function_25 混合壓(8_1、8_5)
+        #region 25 混合壓
         void function_25(int port)
         {
             try
@@ -4179,8 +3815,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_26_PingIP 只PING設備IP，連線成功就回傳黃燈
-        void function_26_PingIP()
+        #region 26 只PING設備IP，連線成功就回傳黃燈
+        void function_26()
         {
 
             Ping ping = new Ping();
@@ -4217,8 +3853,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_27_light 晶圓清洗機#1燈號判斷
-        void function_27_light()
+        #region 27 晶圓清洗機#1燈號判斷
+        void function_27()
         {
             try
             {
@@ -4306,8 +3942,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_28_light 電漿蝕刻機#2燈號判斷
-        void function_28_light()
+        #region 28 電漿蝕刻機#2燈號判斷
+        void function_28()
         {
             try
             {
@@ -4397,8 +4033,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_29_light Cello RIE反應式離子蝕刻機-1燈號判斷
-        void function_29_light()
+        #region 29 Cello RIE反應式離子蝕刻機-1燈號判斷
+        void function_29()
         {
             try
             {
@@ -4488,7 +4124,7 @@ namespace MES_N
         }
         #endregion
 
-        #region function_33 調頻機燈號判斷
+        #region 33 調頻機燈號判斷
         void function_33()
         {
             try
@@ -4551,7 +4187,7 @@ namespace MES_N
         }
         #endregion
 
-        #region function_34 水阻值
+        #region 34 水阻值(新)
         void function_34()
         {
             try
@@ -4608,8 +4244,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_35_S1F9 S1F9 
-        void function_35_S1F9()
+        #region 35 完鍍機參數(S1F9)
+        void function_35()
         {
             try
             {
@@ -4666,9 +4302,9 @@ namespace MES_N
         #endregion
 
         #region 廠務設備 function 30-32 氮氣流量、比電阻、水流量
-
-        #region function_30 AFR 氮氣流量
-        void function_AFR()
+        //221209 對數值
+        #region 30 AFR 氮氣流量
+        void function_30()
         {
 
             try
@@ -4819,8 +4455,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_31 RES 比電阻
-        void function_RESOHM()
+        #region 31 RES 比電阻
+        void function_31()
         {
             try
             {
@@ -4860,8 +4496,8 @@ namespace MES_N
         }
         #endregion
 
-        #region function_32 LFM 水流量
-        void function_LFM()
+        #region 32 LFM 水流量
+        void function_32()
         {
             
 

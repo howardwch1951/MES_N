@@ -69,7 +69,7 @@ namespace MES_N
             SetDatatable();
         }
 
-        System.Data.DataTable Datatable_showtxt;
+        DataTable dtTxtList;
 
         public void GetDeviceList()
         {
@@ -86,7 +86,7 @@ namespace MES_N
 
                 string strLine = null;
 
-                Datatable_showtxt = new System.Data.DataTable();
+                dtTxtList = new System.Data.DataTable();
 
                 String[] Arry_Str_Set = { "" };
 
@@ -94,25 +94,25 @@ namespace MES_N
 
                 MPU.SetDataColumn(ref Arry_Str_Set, StrDataColumnsName);
 
-                MPU.SetDataTable("", ref Datatable_showtxt, Arry_Str_Set);
+                MPU.SetDataTable("", ref dtTxtList, Arry_Str_Set);
 
                 do
                 {
                     strLine = StreamReader_Txt.ReadLine();
 
 
-                    if (!(strLine == null) && Datatable_showtxt.Columns.Count <= strLine.Split(',').Length)
+                    if (!(strLine == null) && dtTxtList.Columns.Count <= strLine.Split(',').Length)
                     {
 
-                        Datatable_showtxt.Rows.Add(strLine.Split(','));
+                        dtTxtList.Rows.Add(strLine.Split(','));
 
                     }
 
                 } while (!(strLine == null));
 
-                Datatable_showtxt.DefaultView.Sort = "DID asc";
+                dtTxtList.DefaultView.Sort = "DID asc";
 
-                Datatable_showtxt = Datatable_showtxt.DefaultView.ToTable(true);
+                dtTxtList = dtTxtList.DefaultView.ToTable(true);
 
                 StreamReader_Txt.Close();
 
@@ -143,39 +143,39 @@ namespace MES_N
 
                 MPU.SetDataColumn(ref Arry_Str_Set, StrDataColumnsName);
 
-                MPU.SetDataTable("", ref MPU.dt_MainTable, Arry_Str_Set);
+                MPU.SetDataTable("", ref MPU.dtMainTable, Arry_Str_Set);
 
                 //設定主頁DataTable內容
-                for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
+                for (int i = 0; i < dtTxtList.Rows.Count; i++)
                 {
-                    String[] String_RowData = { Datatable_showtxt.Rows[i]["DID"].ToString(),
-                    Datatable_showtxt.Rows[i]["Dline"].ToString(),
-                    Datatable_showtxt.Rows[i]["DIP"].ToString(),
-                    Datatable_showtxt.Rows[i]["Port"].ToString(),
-                    Datatable_showtxt.Rows[i]["Address"].ToString(),
-                    Datatable_showtxt.Rows[i]["Portid"].ToString() ,
-                    Datatable_showtxt.Rows[i]["Sclass"].ToString() ,
-                    Datatable_showtxt.Rows[i]["SID"].ToString() ,
-                    Datatable_showtxt.Rows[i]["NOTE"].ToString() +  "_" +
-                    Datatable_showtxt.Rows[i]["text"].ToString(), "連線中",
+                    String[] String_RowData = { dtTxtList.Rows[i]["DID"].ToString(),
+                    dtTxtList.Rows[i]["Dline"].ToString(),
+                    dtTxtList.Rows[i]["DIP"].ToString(),
+                    dtTxtList.Rows[i]["Port"].ToString(),
+                    dtTxtList.Rows[i]["Address"].ToString(),
+                    dtTxtList.Rows[i]["Portid"].ToString() ,
+                    dtTxtList.Rows[i]["Sclass"].ToString() ,
+                    dtTxtList.Rows[i]["SID"].ToString() ,
+                    dtTxtList.Rows[i]["NOTE"].ToString() +  "_" +
+                    dtTxtList.Rows[i]["text"].ToString(), "連線中",
                     };
 
-                    MPU.dt_MainTable.Rows.Add(String_RowData);
+                    MPU.dtMainTable.Rows.Add(String_RowData);
                 }
 
                 //設定主頁dgv的DataSourse
-                dgvMainView.DataSource = MPU.dt_MainTable;
+                dgvMainView.DataSource = MPU.dtMainTable;
 
                 //設定dgv的DataSourse
                 if (MPU.Ethernet == true)
                 {
-                    dgvCurrentLog.DataSource = MPU.dt_CurrentLog;
-                    dgvHistoryLog.DataSource = MPU.dt_HistoryLog;
+                    dgvCurrentLog.DataSource = MPU.dtCurrentLog;
+                    dgvHistoryLog.DataSource = MPU.dtHistoryLog;
                 }
 
                 //計算不同IP不同Port的數量並將IP和Port存入字典
                 int count = 0;
-                foreach (DataRow row in Datatable_showtxt.Rows)
+                foreach (DataRow row in dtTxtList.Rows)
                 {
                     string ip = row["DIP"].ToString();
                     string port = row["Port"].ToString();
@@ -228,35 +228,35 @@ namespace MES_N
                 Array.Resize(ref Thread_MesNetSite, dicDeviceList.Values.SelectMany(t => t).Count());
 
                 //設定執行緒參數並啟動執行緒
-                for (int i = 0; i < Datatable_showtxt.Rows.Count; i++)
+                for (int i = 0; i < dtTxtList.Rows.Count; i++)
                 {
-                    if (!MPU.dic_ReceiveMessage.ContainsKey(i))
-                        MPU.dic_ReceiveMessage.GetOrAdd(i, MPU.dt_MainTable.Rows[i]["Static"].ToString());
+                    if (!MPU.dicDgvValue.ContainsKey(i))
+                        MPU.dicDgvValue.GetOrAdd(i, MPU.dtMainTable.Rows[i]["Static"].ToString());
 
                     if (intDiveceIndex.Contains(i))
                     {
                         int n = intDiveceIndex.IndexOf(i);
                         MesNetSite_Sys[n] = new MesNetSite();
 
-                        MesNetSite_Sys[n].strTID = MPU.dt_MainTable.Rows[i]["TID"].ToString();
+                        MesNetSite_Sys[n].strTID = MPU.dtMainTable.Rows[i]["TID"].ToString();
 
-                        MesNetSite_Sys[n].strDline = MPU.dt_MainTable.Rows[i]["Dline"].ToString();
+                        MesNetSite_Sys[n].strDline = MPU.dtMainTable.Rows[i]["Dline"].ToString();
 
-                        MesNetSite_Sys[n].strDIP = MPU.dt_MainTable.Rows[i]["DIP"].ToString();
+                        MesNetSite_Sys[n].strDIP = MPU.dtMainTable.Rows[i]["DIP"].ToString();
 
-                        MesNetSite_Sys[n].strSID = MPU.dt_MainTable.Rows[i]["SID"].ToString();
+                        MesNetSite_Sys[n].strSID = MPU.dtMainTable.Rows[i]["SID"].ToString();
 
-                        MesNetSite_Sys[n].strPort = MPU.dt_MainTable.Rows[i]["Port"].ToString();
+                        MesNetSite_Sys[n].strPort = MPU.dtMainTable.Rows[i]["Port"].ToString();
 
-                        MesNetSite_Sys[n].strAddress = MPU.dt_MainTable.Rows[i]["Address"].ToString();
+                        MesNetSite_Sys[n].strAddress = MPU.dtMainTable.Rows[i]["Address"].ToString();
 
-                        MesNetSite_Sys[n].strPortId = MPU.dt_MainTable.Rows[i]["Portid"].ToString();
+                        MesNetSite_Sys[n].strPortId = MPU.dtMainTable.Rows[i]["Portid"].ToString();
 
-                        MesNetSite_Sys[n].strSclass = MPU.dt_MainTable.Rows[i]["Sclass"].ToString();
+                        MesNetSite_Sys[n].strSclass = MPU.dtMainTable.Rows[i]["Sclass"].ToString();
 
-                        MesNetSite_Sys[n].strNote = MPU.dt_MainTable.Rows[i]["NOTE"].ToString();
+                        MesNetSite_Sys[n].strNote = MPU.dtMainTable.Rows[i]["NOTE"].ToString();
 
-                        MesNetSite_Sys[n].dicDeviceList = dicDeviceList[MPU.dt_MainTable.Rows[i]["DIP"].ToString()];
+                        MesNetSite_Sys[n].dicSclass = dicDeviceList[MPU.dtMainTable.Rows[i]["DIP"].ToString()];
 
                         MesNetSite_Sys[n].int_ThreadNum = intDiveceIndex[n];
 
@@ -297,7 +297,7 @@ namespace MES_N
         }
 
 
-        //設定dgv格式
+        #region 設定dgv格式
         private void SetDatagridview()
         {
             try
@@ -337,8 +337,9 @@ namespace MES_N
                 Console.WriteLine("[SetDatagridview] " + ex.StackTrace);
             }
         }
+        #endregion
 
-        //新增Combobox內容
+        #region 新增Combobox內容
         private void SetComboboxValue()
         {
             try
@@ -346,7 +347,7 @@ namespace MES_N
                 //取得Dline不重複值，並新增到combobox
                 List<string> Dline_list = new List<string>();
                 Dline_cmb.Items.Add("");
-                foreach (DataRow row in MPU.dt_MainTable.Rows)
+                foreach (DataRow row in MPU.dtMainTable.Rows)
                 {
                     if (!Dline_list.Contains(row["Dline"].ToString())) // 判斷有沒有重覆。
                     {
@@ -358,7 +359,7 @@ namespace MES_N
                 //取得Sclass不重複值，並新增到combobox
                 List<string> Sclass_list = new List<string>();
                 Sclass_cmb.Items.Add("");
-                foreach (DataRow row in MPU.dt_MainTable.Rows)
+                foreach (DataRow row in MPU.dtMainTable.Rows)
                 {
                     if (!Sclass_list.Contains(row["Sclass"].ToString())) // 判斷有沒有重覆。
                     {
@@ -373,6 +374,7 @@ namespace MES_N
                 Console.WriteLine("[SetComboboxValue] " + ex.StackTrace);
             }
         }
+        #endregion
 
         private void SetHistoryLog()
         {
@@ -397,12 +399,12 @@ namespace MES_N
 
                     // 2.將DID加入暫存表
                     sbSQL.AppendLine("insert into #DIPtable (DIP) values ");
-                    for (int j = 0; j < MPU.dt_MainTable.Rows.Count; j++)
+                    for (int j = 0; j < MPU.dtMainTable.Rows.Count; j++)
                     {
-                        if (j == (MPU.dt_MainTable.Rows.Count - 1))
-                            sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["DIP"]}');");
+                        if (j == (MPU.dtMainTable.Rows.Count - 1))
+                            sbSQL.AppendLine($"('{MPU.dtMainTable.Rows[j]["DIP"]}');");
                         else
-                            sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["DIP"]}'),");
+                            sbSQL.AppendLine($"('{MPU.dtMainTable.Rows[j]["DIP"]}'),");
                     }
                     sbSQL.AppendLine();
 
@@ -430,7 +432,7 @@ namespace MES_N
                     if (MPU.Ethernet == true)
                     {
                         //設定歷史警報的dgv內容
-                        MPU.dt_HistoryLog = DataTable_HistLog.Clone();
+                        MPU.dtHistoryLog = DataTable_HistLog.Clone();
                         for (int i = 0; i < DataTable_HistLog.Rows.Count; i++)
                         {
                             if (string.IsNullOrEmpty(DataTable_HistLog.Rows[i]["重新連線時間"].ToString()) || 
@@ -446,7 +448,7 @@ namespace MES_N
                                         DataTable_HistLog.Rows[i]["斷線時間"].ToString(),
                                         DataTable_HistLog.Rows[i]["斷線時間"].ToString()
                                     };
-                                MPU.dt_HistoryLog.Rows.Add(String_RowData);
+                                MPU.dtHistoryLog.Rows.Add(String_RowData);
                             }
                             else
                             {
@@ -459,7 +461,7 @@ namespace MES_N
                                         DataTable_HistLog.Rows[i]["重新連線時間"].ToString(),
                                         DataTable_HistLog.Rows[i]["重新連線時間"].ToString()
                                     };
-                                MPU.dt_HistoryLog.Rows.Add(String_RowData1);
+                                MPU.dtHistoryLog.Rows.Add(String_RowData1);
 
                                 string[] String_RowData2 =
                                 {
@@ -470,13 +472,13 @@ namespace MES_N
                                         DataTable_HistLog.Rows[i]["斷線時間"].ToString(),
                                         DataTable_HistLog.Rows[i]["斷線時間"].ToString()
                                     };
-                                MPU.dt_HistoryLog.Rows.Add(String_RowData2);
+                                MPU.dtHistoryLog.Rows.Add(String_RowData2);
                             }
                         }
 
-                        DataView dv = MPU.dt_HistoryLog.DefaultView;
+                        DataView dv = MPU.dtHistoryLog.DefaultView;
                         dv.Sort = "Sort desc";
-                        MPU.dt_HistoryLog = dv.ToTable();
+                        MPU.dtHistoryLog = dv.ToTable();
                         dgvHistoryLog.DataSource = dv.ToTable();
 
 
@@ -489,9 +491,9 @@ namespace MES_N
                         dgvHistoryLog.Columns[4].Visible = false;
                         dgvHistoryLog.Columns[6].Visible = false;
                     }
-                    for (int i = 0; i < MPU.dt_HistoryLog.Rows.Count; i++)
+                    for (int i = 0; i < MPU.dtHistoryLog.Rows.Count; i++)
                     {
-                        if (MPU.dt_HistoryLog.Rows[i]["狀態"].ToString().Contains("斷線時間"))
+                        if (MPU.dtHistoryLog.Rows[i]["狀態"].ToString().Contains("斷線時間"))
                         {
                             dgvHistoryLog.Rows[i].DefaultCellStyle.BackColor = Color.MistyRose;
                         }
@@ -527,12 +529,12 @@ namespace MES_N
 
                     // 2.將DID加入暫存表
                     sbSQL.AppendLine("insert into #DIPtable (DIP) values ");
-                    for (int j = 0; j < MPU.dt_MainTable.Rows.Count; j++)
+                    for (int j = 0; j < MPU.dtMainTable.Rows.Count; j++)
                     {
-                        if (j == (MPU.dt_MainTable.Rows.Count - 1))
-                            sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["DIP"]}');");
+                        if (j == (MPU.dtMainTable.Rows.Count - 1))
+                            sbSQL.AppendLine($"('{MPU.dtMainTable.Rows[j]["DIP"]}');");
                         else
-                            sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["DIP"]}'),");
+                            sbSQL.AppendLine($"('{MPU.dtMainTable.Rows[j]["DIP"]}'),");
                     }
                     sbSQL.AppendLine();
 
@@ -551,7 +553,7 @@ namespace MES_N
                     // 4.移除剛才建立的暫存表
                     sbSQL.AppendLine("drop table #DIPtable;");
 
-                    MPU.dt_CurrentLog = MPU.ReadSQLToDT(sbSQL.ToString(), 10);
+                    MPU.dtCurrentLog = MPU.ReadSQLToDT(sbSQL.ToString(), 10);
                 }
             }
             catch (Exception ex)
@@ -561,7 +563,7 @@ namespace MES_N
             }
         }
 
-        #region 更新dgv，回寫Dayno資料表
+        #region 更新dgv、回寫Dayno資料表、回寫感測器數據
         bool bool_run;
         string strSQLDaynoRumTime = "";
         StringBuilder sbSQL = new StringBuilder();
@@ -574,17 +576,17 @@ namespace MES_N
                 bool_run = false;
                 try
                 {
-                    // 更新dgvMainView畫面
-                    foreach (KeyValuePair<int, string> item in MPU.dic_ReceiveMessage)
+                    #region 更新dgvMainView畫面
+                    foreach (KeyValuePair<int, string> item in MPU.dicDgvValue)
                     {
                         try
                         {
-                            if (MPU.dt_MainTable.Rows.Count == dgvMainView.Rows.Count)
+                            if (MPU.dtMainTable.Rows.Count == dgvMainView.Rows.Count)
                             {
-                                if (MPU.dt_MainTable.Rows[item.Key]["Static"] != null && dgvMainView.Rows[item.Key] != null)
+                                if (MPU.dtMainTable.Rows[item.Key]["Static"] != null && dgvMainView.Rows[item.Key] != null)
                                 {
                                     //MPU.WriteData(@".\view_Log", "view_Log.txt", DateTime.Now.ToString("HH:mm:ss") + " intDiveceIndex：" + item.Key.ToString());
-                                    MPU.dt_MainTable.Rows[item.Key]["Static"] = DateTime.Now.ToString("HH:mm:ss") + " ... " + item.Value;
+                                    MPU.dtMainTable.Rows[item.Key]["Static"] = DateTime.Now.ToString("HH:mm:ss") + " ... " + item.Value;
                                     if (item.Value.Contains(MPU.str_ErrorMessage[0]) ||
                                         item.Value.Contains(MPU.str_ErrorMessage[1]) ||
                                         item.Value.Contains(MPU.str_ErrorMessage[2]) ||
@@ -592,8 +594,8 @@ namespace MES_N
                                     {
                                         dgvMainView.Rows[item.Key].DefaultCellStyle.BackColor = System.Drawing.Color.MistyRose;
                                     }
-                                    //else if (string.IsNullOrEmpty(MPU.dt_MainTable.Rows[item.Key]["Static"].ToString()))
-                                    //    MPU.dt_MainTable.Rows[item.Key]["Static"] = DateTime.Now.ToString("HH:mm:ss") + " ... " + MPU.str_ErrorMessage[1];
+                                    //else if (string.IsNullOrEmpty(MPU.dtMainTable.Rows[item.Key]["Static"].ToString()))
+                                    //    MPU.dtMainTable.Rows[item.Key]["Static"] = DateTime.Now.ToString("HH:mm:ss") + " ... " + MPU.str_ErrorMessage[1];
                                     else
                                         dgvMainView.Rows[item.Key].DefaultCellStyle.BackColor = System.Drawing.Color.White;
                                 }
@@ -607,6 +609,7 @@ namespace MES_N
                             throw ex;
                         }
                     }
+                    #endregion
 
                     #region 暫時註解
                     //if (MPU.canInsertToDB && DateTime.Now.ToString("yyyy-MM-dd HH:mm") != strSQLDaynoRumTime)
@@ -677,6 +680,8 @@ namespace MES_N
                             {
                                 //把所有SQL指令組合再一起
                                 MPU.listSQL.ForEach(t => sbSQL.AppendLine(t));
+                                //移除剛剛已經寫入完的SQL指令
+                                MPU.listSQL.RemoveRange(0, count);
 
                                 //檢查資料庫連線後寫入資料庫
                                 if (Check_Connection.CheckConnaction())
@@ -684,8 +689,7 @@ namespace MES_N
                                 else
                                     MPU.ReadSQLToDT_dbMEStemp(sbSQL.ToString());
 
-                                //移除剛剛已經寫入完的SQL指令
-                                MPU.listSQL.RemoveRange(0, count);
+                                sbSQL.Clear();
                             }
                         }
                     }
@@ -819,8 +823,8 @@ namespace MES_N
                 {
                     conn_str = conn_str.TrimStart(" and ".ToArray());
 
-                    ResultRow = MPU.dt_MainTable.Select(conn_str);
-                    ResultTable = MPU.dt_MainTable.Clone();
+                    ResultRow = MPU.dtMainTable.Select(conn_str);
+                    ResultTable = MPU.dtMainTable.Clone();
                     foreach (var Rows in ResultRow)
                     {
                         ResultTable.ImportRow(Rows);
@@ -880,12 +884,12 @@ namespace MES_N
 
                 // 2.將SID加入暫存表
                 sbSQL.AppendLine("insert into #DIPtable (DIP) values ");
-                for (int j = 0; j < MPU.dt_MainTable.Rows.Count; j++)
+                for (int j = 0; j < MPU.dtMainTable.Rows.Count; j++)
                 {
-                    if (j == (MPU.dt_MainTable.Rows.Count - 1))
-                        sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["DIP"]}');");
+                    if (j == (MPU.dtMainTable.Rows.Count - 1))
+                        sbSQL.AppendLine($"('{MPU.dtMainTable.Rows[j]["DIP"]}');");
                     else
-                        sbSQL.AppendLine($"('{MPU.dt_MainTable.Rows[j]["DIP"]}'),");
+                        sbSQL.AppendLine($"('{MPU.dtMainTable.Rows[j]["DIP"]}'),");
                 }
                 sbSQL.AppendLine();
 
@@ -916,7 +920,7 @@ namespace MES_N
 
                 if (MPU.Ethernet == true)
                 {
-                    MPU.dt_HistoryLog = DataTable_HistLog.Clone();
+                    MPU.dtHistoryLog = DataTable_HistLog.Clone();
                     for (int i = 0; i < DataTable_HistLog.Rows.Count; i++)
                     {
                         if (string.IsNullOrEmpty(DataTable_HistLog.Rows[i]["重新連線時間"].ToString()) ||
@@ -932,7 +936,7 @@ namespace MES_N
                                     DataTable_HistLog.Rows[i]["斷線時間"].ToString(),
                                     DataTable_HistLog.Rows[i]["斷線時間"].ToString()
                                 };
-                            MPU.dt_HistoryLog.Rows.Add(String_RowData);
+                            MPU.dtHistoryLog.Rows.Add(String_RowData);
                         }
                         else
                         {
@@ -945,7 +949,7 @@ namespace MES_N
                                     DataTable_HistLog.Rows[i]["重新連線時間"].ToString(),
                                     DataTable_HistLog.Rows[i]["重新連線時間"].ToString()
                                 };
-                            MPU.dt_HistoryLog.Rows.Add(String_RowData1);
+                            MPU.dtHistoryLog.Rows.Add(String_RowData1);
 
                             string[] String_RowData2 =
                             {
@@ -956,18 +960,18 @@ namespace MES_N
                                     DataTable_HistLog.Rows[i]["斷線時間"].ToString(),
                                     DataTable_HistLog.Rows[i]["斷線時間"].ToString()
                                 };
-                            MPU.dt_HistoryLog.Rows.Add(String_RowData2);
+                            MPU.dtHistoryLog.Rows.Add(String_RowData2);
                         }
                     }
 
-                    DataView dv = MPU.dt_HistoryLog.DefaultView;
+                    DataView dv = MPU.dtHistoryLog.DefaultView;
                     dv.Sort = "Sort desc";
-                    MPU.dt_HistoryLog = dv.ToTable();
+                    MPU.dtHistoryLog = dv.ToTable();
                     dgvHistoryLog.DataSource = dv.ToTable();
 
-                    for (int i = 0; i < MPU.dt_HistoryLog.Rows.Count; i++)
+                    for (int i = 0; i < MPU.dtHistoryLog.Rows.Count; i++)
                     {
-                        if (string.IsNullOrEmpty(MPU.dt_HistoryLog.Rows[i]["重新連線時間"].ToString()))
+                        if (string.IsNullOrEmpty(MPU.dtHistoryLog.Rows[i]["重新連線時間"].ToString()))
                         {
                             dgvHistoryLog.Rows[i].DefaultCellStyle.BackColor = Color.MistyRose;
                         }
@@ -987,9 +991,9 @@ namespace MES_N
                     dgvHistoryLog.Columns[4].Visible = false;
                     dgvHistoryLog.Columns[6].Visible = false;
                 }
-                for (int i = 0; i < MPU.dt_HistoryLog.Rows.Count; i++)
+                for (int i = 0; i < MPU.dtHistoryLog.Rows.Count; i++)
                 {
-                    if (MPU.dt_HistoryLog.Rows[i]["狀態"].ToString().Contains("斷線時間"))
+                    if (MPU.dtHistoryLog.Rows[i]["狀態"].ToString().Contains("斷線時間"))
                     {
                         dgvHistoryLog.Rows[i].DefaultCellStyle.BackColor = Color.MistyRose;
                     }
@@ -1006,6 +1010,7 @@ namespace MES_N
         }
         #endregion
 
+        #region 上方頁籤選擇功能
         private void tabControl1_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (Check_Connection.CheckConnaction())
@@ -1020,7 +1025,7 @@ namespace MES_N
                 {
 
                     tmrCurrentLog.Interval = 1000;
-                    dgvCurrentLog.DataSource = MPU.dt_CurrentLog;
+                    dgvCurrentLog.DataSource = MPU.dtCurrentLog;
                     dgvCurrentLog.Columns[0].Width = 100;
                     dgvCurrentLog.Columns[1].Width = 70;
                     dgvCurrentLog.Columns[2].Width = 857;
@@ -1044,6 +1049,7 @@ namespace MES_N
             else
                 MessageBox.Show("資料庫連線失敗！", "警告", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        #endregion
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
@@ -1060,7 +1066,7 @@ namespace MES_N
                     Thread.Sleep(500);
                     int count = 0;
 
-                    //關閉設備連線，直到全部設備都關閉才往下繼續做
+                    #region 關閉設備連線，直到全部設備都關閉才往下繼續做
                     while (isTcpConnect.IndexOf(true) > 0 || count < 5)
                     {
                         for (int i = 0; i < isTcpConnect.Count; i++)
@@ -1088,11 +1094,12 @@ namespace MES_N
                         count++;
                         Thread.Sleep(100);
                     }
+                    #endregion
 
                     Thread.Sleep(100);
                     count = 0;
 
-                    //關閉執行緒，直到執行緒都關閉才關閉程式
+                    #region 關閉執行緒，直到執行緒都關閉才關閉程式
                     while (isThreadAlive.IndexOf(true) > -1 || count < 5)
                     {
                         for (int i = 0; i < isThreadAlive.Count; i++)
@@ -1118,6 +1125,8 @@ namespace MES_N
                         count++;
                         Thread.Sleep(100);
                     }
+                    #endregion
+
                     Environment.Exit(0);
                 }
                 else
